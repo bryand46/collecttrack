@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+
+# User-uploaded item images (stored locally, not in source control)
+/public/uploads/
+
+# SQLite database (local data — not in source control)
+prisma/dev.db
+prisma/dev.db-journal

@@ -1,65 +1,242 @@
-import Image from "next/image";
+import Link from 'next/link'
 
-export default function Home() {
+const features = [
+  {
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      </svg>
+    ),
+    color: '#3B82F6',
+    bg: '#EFF6FF',
+    title: 'Track Everything',
+    desc: 'Log every item in your collection — toys, guitars, watches, art, and more — with photos, purchase price, and current value.',
+  },
+  {
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+        <polyline points="16 7 22 7 22 13" />
+      </svg>
+    ),
+    color: '#16A34A',
+    bg: '#F0FDF4',
+    title: 'Know Your Value',
+    desc: 'See your total paid vs. estimated value at a glance. Spot gains and losses across your entire collection instantly.',
+  },
+  {
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8" />
+        <rect x="2" y="2" width="4" height="4" rx="1" />
+        <rect x="18" y="2" width="4" height="4" rx="1" />
+        <rect x="2" y="18" width="4" height="4" rx="1" />
+        <rect x="18" y="18" width="4" height="4" rx="1" />
+      </svg>
+    ),
+    color: '#7C3AED',
+    bg: '#F5F3FF',
+    title: 'Image Search Built In',
+    desc: 'Find the perfect photo for any item with integrated image search. Save it directly to your collection in one click.',
+  },
+  {
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+      </svg>
+    ),
+    color: '#EA580C',
+    bg: '#FFF7ED',
+    title: 'Personalized for You',
+    desc: "Tell us what you collect and we'll surface your categories first — no digging through options that don't apply to you.",
+  },
+]
+
+const categories = [
+  { emoji: '🎮', label: 'Video Games' },
+  { emoji: '🎸', label: 'Guitars' },
+  { emoji: '🧸', label: 'Toys & Figures' },
+  { emoji: '⌚', label: 'Watches' },
+  { emoji: '🎨', label: 'Art' },
+  { emoji: '👟', label: 'Sneakers' },
+  { emoji: '📚', label: 'Books & Comics' },
+  { emoji: '🍷', label: 'Wine & Spirits' },
+  { emoji: '🪙', label: 'Coins & Currency' },
+  { emoji: '🏆', label: 'Sports Cards' },
+  { emoji: '🎬', label: 'Movies & Music' },
+  { emoji: '🔩', label: 'Tools & Vintage' },
+]
+
+export default function LandingPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ background: 'linear-gradient(180deg, #0F172A 0%, #1E293B 60%, #0F172A 100%)' }}
+    >
+      {/* Nav */}
+      <header className="flex items-center justify-between px-8 py-5 max-w-6xl mx-auto w-full">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+            style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)' }}
+          >
+            CT
+          </div>
+          <span className="text-white font-bold text-lg tracking-tight">CollectTrack</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/login"
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            style={{ color: '#94A3B8' }}
+          >
+            Sign In
+          </Link>
+          <Link
+            href="/register"
+            className="px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+            style={{
+              background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
+              color: '#FFFFFF',
+              boxShadow: '0 2px 8px rgba(59,130,246,0.4)',
+            }}
+          >
+            Get Started
+          </Link>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="flex-1 flex flex-col items-center justify-center text-center px-6 py-20 max-w-4xl mx-auto w-full">
+        <div
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-6"
+          style={{ background: 'rgba(59,130,246,0.15)', color: '#93C5FD', border: '1px solid rgba(59,130,246,0.3)' }}
+        >
+          ✦ Your personal collection manager
+        </div>
+        <h1 className="text-5xl font-extrabold leading-tight mb-5" style={{ color: '#F8FAFC' }}>
+          Every collectible,{' '}
+          <span
+            style={{
+              background: 'linear-gradient(135deg, #60A5FA, #818CF8)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}
+          >
+            tracked & valued.
+          </span>
+        </h1>
+        <p className="text-lg mb-10 max-w-xl leading-relaxed" style={{ color: '#94A3B8' }}>
+          CollectTrack is the simple way to catalog what you own, what you paid, and what it's worth — for collectors of anything.
+        </p>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/register"
+            className="px-7 py-3.5 rounded-xl text-base font-bold transition-all"
+            style={{
+              background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
+              color: '#FFFFFF',
+              boxShadow: '0 4px 20px rgba(59,130,246,0.45)',
+            }}
+          >
+            Start Tracking Free →
+          </Link>
+          <Link
+            href="/login"
+            className="px-7 py-3.5 rounded-xl text-base font-semibold transition-all"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              color: '#CBD5E1',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            Sign In
+          </Link>
+        </div>
+
+        {/* Category pills */}
+        <div className="mt-14 flex flex-wrap justify-center gap-2 max-w-2xl">
+          {categories.map((c) => (
+            <span
+              key={c.label}
+              className="px-3 py-1.5 rounded-full text-xs font-medium"
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                color: '#94A3B8',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              {c.emoji} {c.label}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="px-6 pb-20 max-w-6xl mx-auto w-full">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          {features.map((f) => (
+            <div
+              key={f.title}
+              className="rounded-2xl p-6"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
             >
-              Learning
-            </a>{" "}
-            center.
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
+                style={{ background: f.bg, color: f.color }}
+              >
+                {f.icon}
+              </div>
+              <h3 className="font-bold text-base mb-2" style={{ color: '#F1F5F9' }}>
+                {f.title}
+              </h3>
+              <p className="text-sm leading-relaxed" style={{ color: '#64748B' }}>
+                {f.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA strip */}
+      <section className="px-6 pb-16 max-w-6xl mx-auto w-full">
+        <div
+          className="rounded-2xl p-10 text-center"
+          style={{
+            background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(99,102,241,0.15))',
+            border: '1px solid rgba(99,102,241,0.25)',
+          }}
+        >
+          <h2 className="text-2xl font-bold mb-3" style={{ color: '#F1F5F9' }}>
+            Ready to organize your collection?
+          </h2>
+          <p className="text-sm mb-6" style={{ color: '#94A3B8' }}>
+            Set up takes two minutes. Tell us what you collect and start adding items right away.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/register"
+            className="inline-block px-8 py-3 rounded-xl text-sm font-bold"
+            style={{
+              background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
+              color: '#FFFFFF',
+              boxShadow: '0 4px 16px rgba(59,130,246,0.4)',
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            Get Started for Free →
+          </Link>
         </div>
-      </main>
+      </section>
+
+      {/* Footer */}
+      <footer className="text-center pb-8">
+        <p className="text-xs" style={{ color: '#334155' }}>
+          CollectTrack — built for collectors, by collectors.
+        </p>
+      </footer>
     </div>
-  );
+  )
 }

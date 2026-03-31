@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// User — stub for future auth (Clerk / NextAuth)
+// When auth is added: populate userId on all items,
+// then make the relation required.
+// ─────────────────────────────────────────────
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?  // bcrypt hash — null only for legacy stub records
+  name      String?
+  role      String   @default("user") // "user" | "admin"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  items     Item[]
+  profile   CollectorProfile?
+}
+
+// ─────────────────────────────────────────────
+// CollectorProfile — stores what the user collects
+// preferredGroups: JSON array of category group names
+//   e.g. ["Toys & Figures", "Music", "Watches & Accessories"]
+// Single record per user (userId nullable until auth is live)
+// ─────────────────────────────────────────────
+model CollectorProfile {
+  id               String   @id @default(cuid())
+  preferredGroups  String   @default("[]") // JSON array
+  displayName      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Item — core collection record
+// ─────────────────────────────────────────────
+model Item {
+  id             String    @id @default(cuid())
+  name           String
+  category       String
+  manufacturer   String?
+  description    String?
+  condition      String    @default("Good")
+  acquiredAt     DateTime?
+  paidPrice      Decimal?
+  estimatedValue Decimal?
+  imageUrl       String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Optional owner — becomes required when auth is live
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+}
