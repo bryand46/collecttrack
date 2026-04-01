@@ -6,6 +6,17 @@ import { useSession } from 'next-auth/react'
 import { getPlan } from '@/lib/plans'
 import { LockClosedIcon, ArrowTrendingUpIcon, SparklesIcon } from '@heroicons/react/24/outline'
 
+type Preorder = {
+  id: string
+  name: string
+  category: string
+  expectedDate: string | null
+  status: string
+  retailer: string | null
+  totalPrice: number | null
+  depositPaid: number | null
+}
+
 type Item = {
   id: string
   name: string
@@ -74,6 +85,7 @@ const CATEGORY_COLORS = [
 export default function DashboardPage() {
   const { data: session } = useSession()
   const [items, setItems] = useState<Item[]>([])
+  const [preorders, setPreorders] = useState<Preorder[]>([])
   const [loading, setLoading] = useState(true)
 
   const userPlan = (session?.user as { plan?: string })?.plan ?? 'free'
@@ -81,13 +93,14 @@ export default function DashboardPage() {
   const hasAnalytics = plan.analytics
 
   useEffect(() => {
-    fetch('/api/items')
-      .then((res) => res.json())
-      .then((data) => {
-        setItems(Array.isArray(data) ? data : [])
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
+    Promise.all([
+      fetch('/api/items').then((r) => r.json()),
+      fetch('/api/preorders').then((r) => r.json()),
+    ]).then(([itemData, preorderData]) => {
+      setItems(Array.isArray(itemData) ? itemData : [])
+      setPreorders(Array.isArray(preorderData) ? preorderData : [])
+      setLoading(false)
+    }).catch(() => setLoading(false))
   }, [])
 
   const usd = (n: number) =>
@@ -257,6 +270,58 @@ export default function DashboardPage() {
               >
                 + Add First Item
               </Link>
+            </div>
+          )}
+
+          {/* Upcoming preorders strip */}
+          {preorders.filter(p => p.status === 'preordered' || p.status === 'shipped').length > 0 && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-base" style={{ color: '#0F172A' }}>Upcoming Preorders</h2>
+                <Link href="/preorders" className="text-sm font-medium" style={{ color: '#3B82F6' }}>View all →</Link>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {preorders
+                  .filter(p => p.status === 'preordered' || p.status === 'shipped')
+                  .slice(0, 3)
+                  .map((p) => {
+                    const days = p.expectedDate
+                      ? Math.ceil((new Date(p.expectedDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                      : null
+                    const balance = Math.max(0, Number(p.totalPrice ?? 0) - Number(p.depositPaid ?? 0))
+                    const isShipped = p.status === 'shipped'
+                    return (
+                      <Link key={p.id} href={`/preorders/${p.id}`}>
+                        <div className="rounded-xl p-4 flex items-center gap-3 transition-all"
+                          style={{ background: '#FFFFFF', border: `1px solid ${isShipped ? '#BFDBFE' : '#FDE68A'}` }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)' }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'none' }}
+                        >
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ background: isShipped ? '#DBEAFE' : '#FEF3C7' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isShipped ? '#3B82F6' : '#F59E0B'} strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                              {isShipped
+                                ? <><rect x="1" y="3" width="15" height="13" /><path d="M16 8h4l3 5v3h-7V8z" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" /></>
+                                : <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>
+                              }
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate" style={{ color: '#0F172A' }}>{p.name}</p>
+                            <p className="text-xs" style={{ color: '#64748B' }}>
+                              {isShipped ? 'Shipped' : days !== null ? (days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Expected today' : `~${days}d away`) : 'Date TBD'}
+                            </p>
+                          </div>
+                          {balance > 0 && (
+                            <span className="text-xs font-bold shrink-0" style={{ color: '#EA580C' }}>
+                              {usd(balance)} due
+                            </span>
+                          )}
+                        </div>
+                      </Link>
+                    )
+                  })}
+              </div>
             </div>
           )}
 
