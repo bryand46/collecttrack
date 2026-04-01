@@ -62,7 +62,7 @@ const PLAN_BADGE: Record<string, { label: string; style: React.CSSProperties }> 
   },
 }
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname()
   const { data: session } = useSession()
 
@@ -74,13 +74,13 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="w-60 flex flex-col"
+      className="w-60 flex flex-col h-full"
       style={{ background: 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)', minHeight: '100vh' }}
       role="navigation"
       aria-label="Main navigation"
     >
-      {/* Logo */}
-      <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+      {/* Logo + mobile close button */}
+      <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         <div className="flex items-center gap-2.5">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
@@ -91,6 +91,20 @@ export default function Sidebar() {
           </div>
           <span className="text-white font-bold text-lg tracking-tight">CollectTrack</span>
         </div>
+        {/* Close button — only shown on mobile */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1.5 rounded-lg"
+            style={{ color: '#64748B' }}
+            aria-label="Close navigation"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Logged-in user + plan badge — clicking opens profile */}

@@ -205,14 +205,14 @@ export default function ItemsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#0F172A' }}>My Items</h1>
           <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>
             {items.length} {items.length === 1 ? 'item' : 'items'} in your collection
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Export dropdown */}
           {items.length > 0 && (
             <div className="relative" ref={exportRef}>

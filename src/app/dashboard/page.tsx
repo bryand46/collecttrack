@@ -141,7 +141,7 @@ export default function DashboardPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-7">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-7">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#0F172A' }}>Dashboard</h1>
           <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>
@@ -150,7 +150,7 @@ export default function DashboardPage() {
         </div>
         <Link
           href="/items/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold sm:w-auto"
           style={{
             background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
             color: '#FFFFFF',

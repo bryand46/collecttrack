@@ -80,7 +80,7 @@ export default function LandingPage() {
       style={{ background: 'linear-gradient(180deg, #0F172A 0%, #1E293B 60%, #0F172A 100%)' }}
     >
       {/* Nav */}
-      <header className="flex items-center justify-between px-8 py-5 max-w-6xl mx-auto w-full">
+      <header className="flex items-center justify-between px-4 sm:px-8 py-4 sm:py-5 max-w-6xl mx-auto w-full">
         <div className="flex items-center gap-2.5">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
@@ -135,10 +135,10 @@ export default function LandingPage() {
         <p className="text-lg mb-10 max-w-xl leading-relaxed" style={{ color: '#94A3B8' }}>
           CollectTrack is the simple way to catalog what you own, what you paid, and what it's worth — for collectors of anything.
         </p>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 w-full sm:w-auto">
           <Link
             href="/register"
-            className="px-7 py-3.5 rounded-xl text-base font-bold transition-all"
+            className="w-full sm:w-auto text-center px-7 py-3.5 rounded-xl text-base font-bold transition-all"
             style={{
               background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
               color: '#FFFFFF',
@@ -149,7 +149,7 @@ export default function LandingPage() {
           </Link>
           <Link
             href="/login"
-            className="px-7 py-3.5 rounded-xl text-base font-semibold transition-all"
+            className="w-full sm:w-auto text-center px-7 py-3.5 rounded-xl text-base font-semibold transition-all"
             style={{
               background: 'rgba(255,255,255,0.06)',
               color: '#CBD5E1',

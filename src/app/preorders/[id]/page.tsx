@@ -190,7 +190,7 @@ export default function PreorderDetailPage() {
       </div>
 
       {/* Details grid */}
-      <div className="grid grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
         {[
           { label: 'Retailer', value: preorder.retailer },
           { label: 'Order Ref', value: preorder.orderReference },

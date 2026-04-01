@@ -364,7 +364,7 @@ export default function NewItemPage() {
           </div>
 
           {/* Category + Condition */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="category" className={labelClass} style={labelStyle}>
                 Category <span style={{ color: '#EF4444' }} aria-hidden="true">*</span>
@@ -505,7 +505,7 @@ export default function NewItemPage() {
           </div>
 
           {/* Prices */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="paidPrice" className={labelClass} style={labelStyle}>
                 Paid Price ($)

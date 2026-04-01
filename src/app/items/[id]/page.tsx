@@ -216,7 +216,7 @@ export default function ItemDetailPage() {
           )}
 
           {/* Valuation cards */}
-          <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="grid grid-cols-3 sm:grid-cols-3 gap-3 mb-5">
             <div className="rounded-xl p-3 text-center" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
               <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: '#94A3B8' }}>Paid</p>
               <p className="text-lg font-bold" style={{ color: '#334155' }}>
@@ -371,7 +371,7 @@ export default function ItemDetailPage() {
               {marketData && (
                 <>
                   {/* Stats */}
-                  <div className="grid grid-cols-2 gap-3 mb-5">
+                  <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 mb-5">
                     <div className="rounded-xl p-4 text-center" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                       <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6EE7B7' }}>Avg Sale Price</p>
                       <p className="text-2xl font-bold" style={{ color: '#15803D' }}>{usd(marketData.average)}</p>

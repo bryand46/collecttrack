@@ -73,7 +73,7 @@ export default function NewPreorderPage() {
               style={{ border: '1px solid #E2E8F0', color: '#0F172A' }} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Category *</label>
               <select value={form.category} onChange={(e) => set('category', e.target.value)} required
@@ -91,7 +91,7 @@ export default function NewPreorderPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Edition / Variant</label>
               <input value={form.edition} onChange={(e) => set('edition', e.target.value)}
@@ -111,7 +111,7 @@ export default function NewPreorderPage() {
         <div className="rounded-2xl p-6 space-y-4" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
           <h2 className="font-semibold text-sm uppercase tracking-wide" style={{ color: '#94A3B8' }}>Order Details</h2>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Retailer / Store</label>
               <input value={form.retailer} onChange={(e) => set('retailer', e.target.value)}
@@ -126,7 +126,7 @@ export default function NewPreorderPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Expected Release Date</label>
               <input type="date" value={form.expectedDate} onChange={(e) => set('expectedDate', e.target.value)}
@@ -150,7 +150,7 @@ export default function NewPreorderPage() {
         {/* Pricing */}
         <div className="rounded-2xl p-6 space-y-4" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
           <h2 className="font-semibold text-sm uppercase tracking-wide" style={{ color: '#94A3B8' }}>Pricing</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Total Price</label>
               <div className="relative">

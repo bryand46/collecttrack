@@ -109,7 +109,7 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {COLLECTION_GROUPS.map((group) => {
               const isSelected = selected.includes(group.id)
               return (
