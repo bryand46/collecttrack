@@ -28,16 +28,6 @@ const navItems = [
     ),
   },
   {
-    href: '/profile',
-    label: 'Profile',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-      </svg>
-    ),
-  },
-  {
     href: '/preorders',
     label: 'Preorders',
     icon: (
@@ -105,16 +95,22 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Logged-in user + plan badge */}
-      <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-2.5">
+      {/* Logged-in user + plan badge — clicking opens profile */}
+      <div className="border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <Link
+          href="/profile"
+          className="flex items-center gap-2.5 px-4 py-3 transition-colors group"
+          style={{ color: 'inherit' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,255,255,0.04)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent' }}
+        >
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#fff' }}
           >
             {userName.charAt(0).toUpperCase()}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold truncate" style={{ color: '#E2E8F0' }}>
               {userName}
               {isAdmin && (
@@ -125,7 +121,11 @@ export default function Sidebar() {
             </p>
             <p className="text-xs truncate" style={{ color: '#475569' }}>{userEmail}</p>
           </div>
-        </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </Link>
 
         {/* Plan badge */}
         <div className="mt-2.5 flex items-center justify-between">
