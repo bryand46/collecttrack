@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
+import { getPlan } from '@/lib/plans'
 
 const navItems = [
   {
@@ -36,7 +37,32 @@ const navItems = [
       </svg>
     ),
   },
+  {
+    href: '/pricing',
+    label: 'Plans & Billing',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+        <line x1="1" y1="10" x2="23" y2="10" />
+      </svg>
+    ),
+  },
 ]
+
+const PLAN_BADGE: Record<string, { label: string; style: React.CSSProperties }> = {
+  free: {
+    label: 'Free',
+    style: { background: 'rgba(100,116,139,0.2)', color: '#94A3B8' },
+  },
+  collector: {
+    label: 'Collector',
+    style: { background: 'rgba(59,130,246,0.2)', color: '#93C5FD' },
+  },
+  vault: {
+    label: 'Vault',
+    style: { background: 'rgba(245,158,11,0.2)', color: '#FCD34D' },
+  },
+}
 
 export default function Sidebar() {
   const pathname = usePathname()
@@ -44,15 +70,15 @@ export default function Sidebar() {
 
   const userName = session?.user?.name || session?.user?.email?.split('@')[0] || 'User'
   const userEmail = session?.user?.email || ''
-  const isAdmin = (session?.user as any)?.role === 'admin'
+  const isAdmin = (session?.user as { role?: string })?.role === 'admin'
+  const userPlan = (session?.user as { plan?: string })?.plan ?? 'free'
+  const planConfig = getPlan(userPlan)
+  const badge = PLAN_BADGE[userPlan] ?? PLAN_BADGE.free
 
   return (
     <aside
       className="w-60 flex flex-col"
-      style={{
-        background: 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)',
-        minHeight: '100vh',
-      }}
+      style={{ background: 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)', minHeight: '100vh' }}
       role="navigation"
       aria-label="Main navigation"
     >
@@ -70,7 +96,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Logged-in user */}
+      {/* Logged-in user + plan badge */}
       <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="flex items-center gap-2.5">
           <div
@@ -83,16 +109,30 @@ export default function Sidebar() {
             <p className="text-sm font-semibold truncate" style={{ color: '#E2E8F0' }}>
               {userName}
               {isAdmin && (
-                <span
-                  className="ml-1.5 text-xs px-1.5 py-0.5 rounded font-bold"
-                  style={{ background: 'rgba(234,179,8,0.2)', color: '#FCD34D' }}
-                >
+                <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(234,179,8,0.2)', color: '#FCD34D' }}>
                   Admin
                 </span>
               )}
             </p>
             <p className="text-xs truncate" style={{ color: '#475569' }}>{userEmail}</p>
           </div>
+        </div>
+
+        {/* Plan badge */}
+        <div className="mt-2.5 flex items-center justify-between">
+          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={badge.style}>
+            {badge.label} plan
+          </span>
+          {userPlan === 'free' && (
+            <Link href="/pricing" className="text-xs font-semibold" style={{ color: '#F59E0B' }}>
+              Upgrade →
+            </Link>
+          )}
+          {userPlan !== 'free' && (
+            <span className="text-xs" style={{ color: '#334155' }}>
+              {planConfig.itemLimit === -1 ? '∞ items' : `${planConfig.itemLimit} item limit`}
+            </span>
+          )}
         </div>
       </div>
 
@@ -108,11 +148,7 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-all"
-              style={
-                isActive
-                  ? { background: 'rgba(59,130,246,0.2)', color: '#93C5FD' }
-                  : { color: '#94A3B8' }
-              }
+              style={isActive ? { background: 'rgba(59,130,246,0.2)', color: '#93C5FD' } : { color: '#94A3B8' }}
               aria-current={isActive ? 'page' : undefined}
             >
               <span style={{ color: isActive ? '#60A5FA' : '#64748B' }}>{item.icon}</span>
@@ -135,6 +171,22 @@ export default function Sidebar() {
             Add Item
           </Link>
         </div>
+
+        {/* Upgrade CTA for free users */}
+        {userPlan === 'free' && (
+          <div className="mt-3 px-1">
+            <Link
+              href="/pricing"
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold"
+              style={{ background: 'rgba(245,158,11,0.1)', color: '#FCD34D', border: '1px solid rgba(245,158,11,0.2)' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              Upgrade Plan
+            </Link>
+          </div>
+        )}
       </nav>
 
       {/* Sign Out */}

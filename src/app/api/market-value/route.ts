@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { withinLookupLimit, needsLookupReset, type Plan } from '@/lib/plans'
 
 interface EbayItem {
   title: string[]
@@ -19,11 +23,42 @@ interface EbayResponse {
 }
 
 export async function GET(request: Request) {
+  // Auth check
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const query = searchParams.get('q')
-
   if (!query) {
     return NextResponse.json({ error: 'Missing query parameter' }, { status: 400 })
+  }
+
+  // Check / reset monthly lookup quota
+  const user = await prisma.user.findUnique({ where: { id: session.user.id } })
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+
+  let { marketLookupCount, marketLookupResetAt } = user
+
+  if (needsLookupReset(marketLookupResetAt)) {
+    marketLookupCount = 0
+    marketLookupResetAt = new Date()
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { marketLookupCount: 0, marketLookupResetAt: new Date() },
+    })
+  }
+
+  if (!withinLookupLimit(user.plan as Plan, marketLookupCount)) {
+    return NextResponse.json(
+      {
+        error: 'Monthly eBay lookup limit reached',
+        plan: user.plan,
+        upgradePath: '/pricing',
+      },
+      { status: 403 }
+    )
   }
 
   const appId = process.env.EBAY_APP_ID
@@ -49,10 +84,8 @@ export async function GET(request: Request) {
 
   let data: EbayResponse
   try {
-    const res = await fetch(url, { next: { revalidate: 300 } }) // cache 5 min
-    if (!res.ok) {
-      throw new Error(`eBay API responded with status ${res.status}`)
-    }
+    const res = await fetch(url, { next: { revalidate: 300 } })
+    if (!res.ok) throw new Error(`eBay API responded with status ${res.status}`)
     data = await res.json()
   } catch (err) {
     console.error('eBay fetch error:', err)
@@ -86,6 +119,12 @@ export async function GET(request: Request) {
   if (listings.length === 0) {
     return NextResponse.json({ error: 'No valid price data found.' }, { status: 404 })
   }
+
+  // Increment lookup count now that we have a successful result
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { marketLookupCount: { increment: 1 } },
+  })
 
   const prices = listings.map((l) => l.price).sort((a, b) => a - b)
   const sum = prices.reduce((acc, p) => acc + p, 0)

@@ -18,6 +18,17 @@ model User {
   password  String?  // bcrypt hash — null only for legacy stub records
   name      String?
   role      String   @default("user") // "user" | "admin"
+
+  // Subscription
+  plan                  String    @default("free") // "free" | "collector" | "vault"
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  planExpiresAt         DateTime?
+
+  // Usage tracking (resets monthly)
+  marketLookupCount     Int       @default(0)
+  marketLookupResetAt   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   items     Item[]

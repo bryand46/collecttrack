@@ -6,7 +6,7 @@ import Sidebar from '@/components/Sidebar'
 import Onboarding from '@/components/Onboarding'
 
 // Pages that render without the sidebar shell
-const BARE_PAGES = ['/', '/login', '/register']
+const BARE_PAGES = ['/', '/login', '/register', '/pricing']
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
