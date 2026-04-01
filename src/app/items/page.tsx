@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 
 type Item = {
@@ -23,18 +23,101 @@ const conditionColors: Record<string, { bg: string; text: string }> = {
   Poor: { bg: '#FEE2E2', text: '#991B1B' },
 }
 
+const usd = (n: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
+
+function ItemCard({ item }: { item: Item }) {
+  const cond = conditionColors[item.condition] ?? { bg: '#F1F5F9', text: '#475569' }
+  return (
+    <Link href={`/items/${item.id}`}>
+      <div
+        className="rounded-2xl overflow-hidden transition-all hover:-translate-y-0.5"
+        style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.10)' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)' }}
+      >
+        <div
+          className="w-full h-44 flex items-center justify-center overflow-hidden"
+          style={{ background: '#F8FAFC' }}
+        >
+          {item.imageUrl ? (
+            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover object-top" />
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="1.5" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+              <span style={{ color: '#CBD5E1', fontSize: '12px' }}>No image</span>
+            </div>
+          )}
+        </div>
+        <div className="p-4">
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <h3 className="font-semibold text-sm leading-tight line-clamp-2" style={{ color: '#0F172A' }}>
+              {item.name}
+            </h3>
+            <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: cond.bg, color: cond.text }}>
+              {item.condition}
+            </span>
+          </div>
+          <p className="text-xs mb-3" style={{ color: '#64748B' }}>
+            {item.category}{item.manufacturer ? ` · ${item.manufacturer}` : ''}
+          </p>
+          {item.estimatedValue != null && (
+            <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: '#F1F5F9' }}>
+              <span className="text-xs" style={{ color: '#94A3B8' }}>Est. Value</span>
+              <span className="text-sm font-bold" style={{ color: '#16A34A' }}>{usd(Number(item.estimatedValue))}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeCategory, setActiveCategory] = useState<string>('All')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     fetch('/api/items')
       .then((res) => res.json())
-      .then((data) => {
-        setItems(data)
-        setLoading(false)
-      })
+      .then((data) => { setItems(Array.isArray(data) ? data : []); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [])
+
+  // Sorted unique categories
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(items.map((i) => i.category))).sort()
+    return ['All', ...cats]
+  }, [items])
+
+  // Filtered + searched items
+  const filtered = useMemo(() => {
+    return items.filter((item) => {
+      const matchCat = activeCategory === 'All' || item.category === activeCategory
+      const matchSearch =
+        search.trim() === '' ||
+        item.name.toLowerCase().includes(search.toLowerCase()) ||
+        (item.manufacturer ?? '').toLowerCase().includes(search.toLowerCase())
+      return matchCat && matchSearch
+    })
+  }, [items, activeCategory, search])
+
+  // Group by category (only when "All" is selected and no search)
+  const grouped = useMemo(() => {
+    if (activeCategory !== 'All' || search.trim() !== '') return null
+    const map: Record<string, Item[]> = {}
+    items.forEach((item) => {
+      if (!map[item.category]) map[item.category] = []
+      map[item.category].push(item)
+    })
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  }, [items, activeCategory, search])
 
   if (loading) {
     return (
@@ -47,7 +130,7 @@ export default function ItemsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-7">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#0F172A' }}>My Items</h1>
           <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>
@@ -56,12 +139,8 @@ export default function ItemsPage() {
         </div>
         <Link
           href="/items/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all"
-          style={{
-            background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
-            color: '#FFFFFF',
-            boxShadow: '0 2px 8px rgba(59,130,246,0.35)',
-          }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold"
+          style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF', boxShadow: '0 2px 8px rgba(59,130,246,0.35)' }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -73,104 +152,97 @@ export default function ItemsPage() {
 
       {/* Empty state */}
       {items.length === 0 ? (
-        <div
-          className="rounded-2xl flex flex-col items-center justify-center py-20 text-center"
-          style={{ background: '#FFFFFF', border: '1px solid #E2E8F0' }}
-        >
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-            style={{ background: '#EFF6FF' }}
-          >
+        <div className="rounded-2xl flex flex-col items-center justify-center py-20 text-center" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: '#EFF6FF' }}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
             </svg>
           </div>
           <p className="text-base font-semibold" style={{ color: '#1E293B' }}>No items yet</p>
           <p className="text-sm mt-1 mb-5" style={{ color: '#64748B' }}>Start building your collection by adding your first item.</p>
-          <Link
-            href="/items/new"
-            className="px-5 py-2.5 rounded-lg text-sm font-semibold"
-            style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }}
-          >
+          <Link href="/items/new" className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }}>
             + Add First Item
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {items.map((item) => {
-            const cond = conditionColors[item.condition] ?? { bg: '#F1F5F9', text: '#475569' }
-            return (
-              <Link key={item.id} href={`/items/${item.id}`}>
-                <div
-                  className="rounded-2xl overflow-hidden transition-all hover:-translate-y-0.5"
-                  style={{
-                    background: '#FFFFFF',
-                    border: '1px solid #E2E8F0',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.10)'
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-                  }}
-                >
-                  {/* Image */}
-                  <div
-                    className="w-full h-44 flex items-center justify-center text-sm font-medium overflow-hidden"
-                    style={{ background: '#F8FAFC', color: '#94A3B8' }}
-                  >
-                    {item.imageUrl ? (
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="w-full h-full object-cover object-top"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center gap-2">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="1.5" aria-hidden="true">
-                          <rect x="3" y="3" width="18" height="18" rx="2" />
-                          <circle cx="8.5" cy="8.5" r="1.5" />
-                          <polyline points="21 15 16 10 5 21" />
-                        </svg>
-                        <span style={{ color: '#CBD5E1', fontSize: '12px' }}>No image</span>
-                      </div>
-                    )}
-                  </div>
+        <>
+          {/* Search + Category filter bar */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
+            {/* Search */}
+            <div className="relative flex-1 max-w-xs">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search items..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+                style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', color: '#0F172A' }}
+              />
+            </div>
 
-                  {/* Content */}
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <h3 className="font-semibold text-sm leading-tight line-clamp-2" style={{ color: '#0F172A' }}>
-                        {item.name}
-                      </h3>
-                      <span
-                        className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full"
-                        style={{ background: cond.bg, color: cond.text }}
-                      >
-                        {item.condition}
-                      </span>
-                    </div>
-                    <p className="text-xs mb-3" style={{ color: '#64748B' }}>
-                      {item.category}{item.manufacturer ? ` · ${item.manufacturer}` : ''}
-                    </p>
-                    {item.estimatedValue != null && (
-                      <div
-                        className="flex items-center justify-between pt-3 border-t"
-                        style={{ borderColor: '#F1F5F9' }}
-                      >
-                        <span className="text-xs" style={{ color: '#94A3B8' }}>Est. Value</span>
-                        <span className="text-sm font-bold" style={{ color: '#16A34A' }}>
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(item.estimatedValue))}
-                        </span>
-                      </div>
-                    )}
+            {/* Category pills */}
+            <div className="flex gap-2 flex-wrap">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                  style={
+                    activeCategory === cat
+                      ? { background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }
+                      : { background: '#FFFFFF', border: '1px solid #E2E8F0', color: '#64748B' }
+                  }
+                >
+                  {cat}
+                  {cat !== 'All' && (
+                    <span className="ml-1 opacity-60">
+                      {items.filter((i) => i.category === cat).length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Grouped view (All + no search) */}
+          {grouped ? (
+            <div className="space-y-10">
+              {grouped.map(([category, catItems]) => (
+                <div key={category}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>{category}</h2>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
+                      {catItems.length} {catItems.length === 1 ? 'item' : 'items'}
+                    </span>
+                    <div className="flex-1 h-px" style={{ background: '#E2E8F0' }} />
+                    <span className="text-xs font-semibold" style={{ color: '#16A34A' }}>
+                      {usd(catItems.reduce((s, i) => s + Number(i.estimatedValue ?? 0), 0))}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {catItems.map((item) => <ItemCard key={item.id} item={item} />)}
                   </div>
                 </div>
-              </Link>
-            )
-          })}
-        </div>
+              ))}
+            </div>
+          ) : (
+            /* Flat filtered view */
+            <>
+              {filtered.length === 0 ? (
+                <div className="text-center py-16" style={{ color: '#94A3B8' }}>
+                  <p className="text-sm">No items match your search.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {filtered.map((item) => <ItemCard key={item.id} item={item} />)}
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   )
