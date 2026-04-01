@@ -1,17 +1,22 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import Link from 'next/link'
+import { exportCollection } from '@/lib/exportCollection'
 
 type Item = {
   id: string
   name: string
   category: string
   manufacturer: string | null
+  edition: string | null
   condition: string
   paidPrice: number | null
   estimatedValue: number | null
   imageUrl: string | null
+  notes: string | null
+  acquiredAt: string | null
+  createdAt: string
 }
 
 const conditionColors: Record<string, { bg: string; text: string }> = {
@@ -142,6 +147,19 @@ export default function ItemsPage() {
   const [activeCategory, setActiveCategory] = useState<string>('All')
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   useEffect(() => {
     fetch('/api/items')
@@ -194,16 +212,75 @@ export default function ItemsPage() {
             {items.length} {items.length === 1 ? 'item' : 'items'} in your collection
           </p>
         </div>
-        <Link
-          href="/items/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold"
-          style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF', boxShadow: '0 2px 8px rgba(59,130,246,0.35)' }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add Item
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* Export dropdown */}
+          {items.length > 0 && (
+            <div className="relative" ref={exportRef}>
+              <button
+                onClick={() => setExportOpen((o) => !o)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all"
+                style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', color: '#475569' }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Export
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+
+              {exportOpen && (
+                <div
+                  className="absolute right-0 mt-1.5 w-52 rounded-xl overflow-hidden z-50"
+                  style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
+                >
+                  <div className="px-3 py-2 border-b" style={{ borderColor: '#F1F5F9' }}>
+                    <p className="text-xs font-semibold" style={{ color: '#94A3B8' }}>
+                      Export {activeCategory === 'All' && search === '' ? 'all' : 'filtered'} {filtered.length} items
+                    </p>
+                  </div>
+                  {[
+                    { format: 'xlsx', label: 'Excel (.xlsx)', icon: '📊', desc: 'With summary sheet' },
+                    { format: 'csv',  label: 'CSV (.csv)',   icon: '📋', desc: 'Spreadsheet-compatible' },
+                    { format: 'json', label: 'JSON (.json)', icon: '🗂️', desc: 'Full data export' },
+                  ].map(({ format, label, icon, desc }) => (
+                    <button
+                      key={format}
+                      onClick={() => {
+                        exportCollection(filtered, format as 'xlsx' | 'csv' | 'json')
+                        setExportOpen(false)
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors"
+                      style={{ color: '#1E293B' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#F8FAFC' }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+                    >
+                      <span className="text-base">{icon}</span>
+                      <div>
+                        <p className="text-sm font-medium">{label}</p>
+                        <p className="text-xs" style={{ color: '#94A3B8' }}>{desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <Link
+            href="/items/new"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold"
+            style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF', boxShadow: '0 2px 8px rgba(59,130,246,0.35)' }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Item
+          </Link>
+        </div>
       </div>
 
       {/* Empty state */}
