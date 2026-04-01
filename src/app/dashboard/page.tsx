@@ -93,14 +93,18 @@ export default function DashboardPage() {
   const hasAnalytics = plan.analytics
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/items').then((r) => r.json()),
-      fetch('/api/preorders').then((r) => r.json()),
-    ]).then(([itemData, preorderData]) => {
-      setItems(Array.isArray(itemData) ? itemData : [])
-      setPreorders(Array.isArray(preorderData) ? preorderData : [])
-      setLoading(false)
-    }).catch(() => setLoading(false))
+    // Fetch independently so a preorders failure never blocks items from showing
+    const fetchItems = fetch('/api/items')
+      .then((r) => r.json())
+      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .catch(() => setItems([]))
+
+    const fetchPreorders = fetch('/api/preorders')
+      .then((r) => r.json())
+      .then((data) => setPreorders(Array.isArray(data) ? data : []))
+      .catch(() => setPreorders([]))
+
+    Promise.allSettled([fetchItems, fetchPreorders]).then(() => setLoading(false))
   }, [])
 
   const usd = (n: number) =>
