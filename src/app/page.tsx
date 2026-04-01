@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { PLANS } from '@/lib/plans'
+import { CheckIcon } from '@heroicons/react/24/solid'
+import { ShieldCheckIcon, StarIcon } from '@heroicons/react/24/outline'
 
 const features = [
   {
@@ -67,6 +70,8 @@ const categories = [
   { emoji: '🎬', label: 'Movies & Music' },
   { emoji: '🔩', label: 'Tools & Vintage' },
 ]
+
+const ORDERED_PLANS = [PLANS.free, PLANS.collector, PLANS.vault]
 
 export default function LandingPage() {
   return (
@@ -200,6 +205,116 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section className="px-6 pb-24 max-w-6xl mx-auto w-full">
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 text-sm font-medium px-4 py-1.5 rounded-full mb-4"
+            style={{ background: 'rgba(245,158,11,0.1)', color: '#FCD34D', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <StarIcon className="w-4 h-4" />
+            Simple, transparent pricing
+          </div>
+          <h2 className="text-3xl font-bold mb-3" style={{ color: '#F1F5F9' }}>
+            Pick the plan that fits your collection
+          </h2>
+          <p className="text-sm max-w-md mx-auto" style={{ color: '#64748B' }}>
+            Start free — no credit card required. Upgrade anytime as your collection grows.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {ORDERED_PLANS.map((plan) => {
+            const isVault = plan.id === 'vault'
+            return (
+              <div
+                key={plan.id}
+                className="relative flex flex-col rounded-2xl p-8"
+                style={
+                  isVault
+                    ? {
+                        background: 'linear-gradient(180deg, rgba(245,158,11,0.08) 0%, rgba(15,23,42,0.6) 100%)',
+                        border: '1px solid rgba(245,158,11,0.35)',
+                        boxShadow: '0 8px 32px rgba(245,158,11,0.1)',
+                      }
+                    : {
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                      }
+                }
+              >
+                {isVault && (
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                    <span
+                      className="text-white text-xs font-bold px-4 py-1 rounded-full"
+                      style={{ background: 'linear-gradient(135deg, #F59E0B, #EA580C)' }}
+                    >
+                      MOST POPULAR
+                    </span>
+                  </div>
+                )}
+
+                {/* Plan header */}
+                <div className="mb-6">
+                  <div
+                    className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-gradient-to-r ${plan.color} text-white mb-3`}
+                  >
+                    <ShieldCheckIcon className="w-3.5 h-3.5" />
+                    {plan.name}
+                  </div>
+                  <div className="flex items-end gap-1.5">
+                    <span className="text-4xl font-extrabold" style={{ color: '#F1F5F9' }}>
+                      {plan.price === 0 ? 'Free' : `$${plan.price}`}
+                    </span>
+                    {plan.price > 0 && (
+                      <span className="mb-1" style={{ color: '#64748B' }}>/month</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Features list */}
+                <ul className="space-y-3 mb-8 flex-1">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-sm" style={{ color: '#94A3B8' }}>
+                      <CheckIcon
+                        className="w-4 h-4 mt-0.5 flex-shrink-0"
+                        style={{ color: isVault ? '#F59E0B' : '#3B82F6' }}
+                      />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+
+                {/* CTA */}
+                <Link
+                  href="/register"
+                  className="block text-center py-3 rounded-xl font-semibold text-sm transition-all"
+                  style={
+                    isVault
+                      ? {
+                          background: 'linear-gradient(135deg, #F59E0B, #EA580C)',
+                          color: '#FFFFFF',
+                          boxShadow: '0 4px 16px rgba(245,158,11,0.3)',
+                        }
+                      : plan.id === 'collector'
+                      ? { background: '#2563EB', color: '#FFFFFF' }
+                      : {
+                          background: 'rgba(255,255,255,0.06)',
+                          color: '#CBD5E1',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                        }
+                  }
+                >
+                  {plan.price === 0 ? 'Get Started Free' : `Start with ${plan.name}`}
+                </Link>
+              </div>
+            )
+          })}
+        </div>
+
+        <p className="text-center text-xs mt-8" style={{ color: '#334155' }}>
+          Cancel anytime. Payments processed securely by Stripe.
+        </p>
       </section>
 
       {/* CTA strip */}
