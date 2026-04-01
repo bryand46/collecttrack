@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
-import { getPlan } from '@/lib/plans'
 
 const navItems = [
   {
@@ -71,7 +70,6 @@ export default function Sidebar() {
   const userEmail = session?.user?.email || ''
   const isAdmin = (session?.user as { role?: string })?.role === 'admin'
   const userPlan = (session?.user as { plan?: string })?.plan ?? 'free'
-  const planConfig = getPlan(userPlan)
   const badge = PLAN_BADGE[userPlan] ?? PLAN_BADGE.free
 
   return (
@@ -119,30 +117,20 @@ export default function Sidebar() {
                 </span>
               )}
             </p>
-            <p className="text-xs truncate" style={{ color: '#475569' }}>{userEmail}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full" style={badge.style}>
+                {badge.label}
+              </span>
+              {userPlan === 'free' && (
+                <span className="text-xs" style={{ color: '#475569' }}>· <span style={{ color: '#F59E0B' }}>Upgrade</span></span>
+              )}
+            </div>
           </div>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
           </svg>
         </Link>
-
-        {/* Plan badge */}
-        <div className="mt-2.5 flex items-center justify-between">
-          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={badge.style}>
-            {badge.label} plan
-          </span>
-          {userPlan === 'free' && (
-            <Link href="/pricing" className="text-xs font-semibold" style={{ color: '#F59E0B' }}>
-              Upgrade →
-            </Link>
-          )}
-          {userPlan !== 'free' && (
-            <span className="text-xs" style={{ color: '#334155' }}>
-              {planConfig.itemLimit === -1 ? '∞ items' : `${planConfig.itemLimit} item limit`}
-            </span>
-          )}
-        </div>
       </div>
 
       {/* Nav links */}
