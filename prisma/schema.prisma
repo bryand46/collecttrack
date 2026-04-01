@@ -54,6 +54,7 @@ model Item {
   acquiredAt     DateTime?
   paidPrice      Decimal?
   estimatedValue Decimal?
+  edition        String?
   imageUrl       String?
   notes          String?
   createdAt      DateTime  @default(now())

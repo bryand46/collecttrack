@@ -9,6 +9,7 @@ type Item = {
   name: string
   category: string
   manufacturer: string | null
+  edition: string | null
   description: string | null
   condition: string
   paidPrice: number | null
@@ -16,6 +17,22 @@ type Item = {
   imageUrl: string | null
   notes: string | null
   createdAt: string
+}
+
+type SoldListing = {
+  title: string
+  price: number
+  soldDate: string
+  url: string
+}
+
+type MarketData = {
+  average: number
+  median: number
+  low: number
+  high: number
+  count: number
+  listings: SoldListing[]
 }
 
 const conditionColors: Record<string, { bg: string; text: string }> = {
@@ -34,6 +51,13 @@ export default function ItemDetailPage() {
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
 
+  // Market value state
+  const [showMarket, setShowMarket] = useState(false)
+  const [marketLoading, setMarketLoading] = useState(false)
+  const [marketData, setMarketData] = useState<MarketData | null>(null)
+  const [marketError, setMarketError] = useState('')
+  const [applyingValue, setApplyingValue] = useState(false)
+
   useEffect(() => {
     fetch(`/api/items/${params.id}`)
       .then((res) => res.json())
@@ -48,6 +72,42 @@ export default function ItemDetailPage() {
     setDeleting(true)
     await fetch(`/api/items/${params.id}`, { method: 'DELETE' })
     router.push('/items')
+  }
+
+  async function handleFindMarketValue() {
+    if (!item) return
+    setShowMarket(true)
+    setMarketLoading(true)
+    setMarketError('')
+    setMarketData(null)
+
+    const query = [item.name, item.manufacturer, item.edition]
+      .filter(Boolean)
+      .join(' ')
+
+    try {
+      const res = await fetch(`/api/market-value?q=${encodeURIComponent(query)}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch market data')
+      setMarketData(data)
+    } catch (err: any) {
+      setMarketError(err.message || 'Could not fetch market data.')
+    } finally {
+      setMarketLoading(false)
+    }
+  }
+
+  async function handleApplyValue(value: number) {
+    if (!item) return
+    setApplyingValue(true)
+    await fetch(`/api/items/${params.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...item, estimatedValue: value }),
+    })
+    setItem({ ...item, estimatedValue: value })
+    setApplyingValue(false)
+    setShowMarket(false)
   }
 
   if (loading) {
@@ -70,7 +130,6 @@ export default function ItemDetailPage() {
 
   const paidNum = item.paidPrice != null ? Number(item.paidPrice) : null
   const valueNum = item.estimatedValue != null ? Number(item.estimatedValue) : null
-
   const gain = paidNum != null && valueNum != null ? valueNum - paidNum : null
   const gainPct =
     gain != null && paidNum && paidNum > 0
@@ -81,7 +140,6 @@ export default function ItemDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Back */}
       <Link
         href="/items"
         className="inline-flex items-center gap-1.5 text-sm font-medium mb-5 transition-colors"
@@ -102,10 +160,7 @@ export default function ItemDetailPage() {
         }}
       >
         {/* Image */}
-        <div
-          className="w-full h-64 flex items-center justify-center overflow-hidden"
-          style={{ background: '#F8FAFC' }}
-        >
+        <div className="w-full h-64 flex items-center justify-center overflow-hidden" style={{ background: '#F8FAFC' }}>
           {item.imageUrl ? (
             <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover object-top" />
           ) : (
@@ -122,7 +177,7 @@ export default function ItemDetailPage() {
 
         <div className="p-6">
           {/* Title row */}
-          <div className="flex items-start justify-between gap-4 mb-2">
+          <div className="flex items-start justify-between gap-4 mb-1">
             <h1 className="text-xl font-bold leading-snug" style={{ color: '#0F172A' }}>
               {item.name}
             </h1>
@@ -135,7 +190,7 @@ export default function ItemDetailPage() {
           </div>
 
           {/* Meta */}
-          <div className="flex items-center gap-2 mb-6">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="text-sm font-medium" style={{ color: '#475569' }}>{item.category}</span>
             {item.manufacturer && (
               <>
@@ -145,21 +200,30 @@ export default function ItemDetailPage() {
             )}
           </div>
 
+          {/* Edition badge */}
+          {item.edition && (
+            <div className="mb-5">
+              <span
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+                style={{ background: 'linear-gradient(135deg, #EEF2FF, #E0E7FF)', color: '#4338CA', border: '1px solid #C7D2FE' }}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                {item.edition}
+              </span>
+            </div>
+          )}
+
           {/* Valuation cards */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div
-              className="rounded-xl p-3 text-center"
-              style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}
-            >
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="rounded-xl p-3 text-center" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
               <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: '#94A3B8' }}>Paid</p>
               <p className="text-lg font-bold" style={{ color: '#334155' }}>
                 {paidNum != null ? usd(paidNum) : '—'}
               </p>
             </div>
-            <div
-              className="rounded-xl p-3 text-center"
-              style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}
-            >
+            <div className="rounded-xl p-3 text-center" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
               <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: '#6EE7B7' }}>Est. Value</p>
               <p className="text-lg font-bold" style={{ color: '#15803D' }}>
                 {valueNum != null ? usd(valueNum) : '—'}
@@ -176,9 +240,7 @@ export default function ItemDetailPage() {
                 Gain / Loss
               </p>
               <p className="text-lg font-bold" style={{ color: gain != null && gain >= 0 ? '#15803D' : '#BE123C' }}>
-                {gain != null
-                  ? `${gain >= 0 ? '+' : '-'}${usd(Math.abs(gain))}`
-                  : '—'}
+                {gain != null ? `${gain >= 0 ? '+' : '-'}${usd(Math.abs(gain))}` : '—'}
               </p>
               {gainPct && (
                 <p className="text-xs font-medium" style={{ color: gain != null && gain >= 0 ? '#15803D' : '#BE123C' }}>
@@ -187,6 +249,24 @@ export default function ItemDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Find Market Value button */}
+          <button
+            onClick={handleFindMarketValue}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold mb-5 transition-all"
+            style={{
+              background: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)',
+              color: '#065F46',
+              border: '1px solid #6EE7B7',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            Find Market Value on eBay
+          </button>
 
           {/* Details */}
           {item.description && (
@@ -197,10 +277,7 @@ export default function ItemDetailPage() {
           )}
 
           {item.notes && (
-            <div
-              className="rounded-xl p-4 mb-4"
-              style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}
-            >
+            <div className="rounded-xl p-4 mb-4" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
               <p className="text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#92400E' }}>Personal Notes</p>
               <p className="text-sm leading-relaxed" style={{ color: '#78350F' }}>{item.notes}</p>
             </div>
@@ -211,17 +288,11 @@ export default function ItemDetailPage() {
           </p>
 
           {/* Actions */}
-          <div
-            className="flex items-center gap-3 pt-4 border-t"
-            style={{ borderColor: '#F1F5F9' }}
-          >
+          <div className="flex items-center gap-3 pt-4 border-t" style={{ borderColor: '#F1F5F9' }}>
             <Link
               href={`/items/${item.id}/edit`}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all"
-              style={{
-                background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
-                color: '#FFFFFF',
-              }}
+              style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -233,11 +304,7 @@ export default function ItemDetailPage() {
               onClick={handleDelete}
               disabled={deleting}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
-              style={{
-                border: '1px solid #FECDD3',
-                color: '#BE123C',
-                background: '#FFF1F2',
-              }}
+              style={{ border: '1px solid #FECDD3', color: '#BE123C', background: '#FFF1F2' }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <polyline points="3 6 5 6 21 6" />
@@ -249,6 +316,124 @@ export default function ItemDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Market Value Modal */}
+      {showMarket && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(4px)' }}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl overflow-hidden"
+            style={{ background: '#FFFFFF', boxShadow: '0 32px 80px rgba(0,0,0,0.3)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+          >
+            {/* Modal header */}
+            <div className="px-6 py-5 border-b flex items-center justify-between" style={{ borderColor: '#E2E8F0' }}>
+              <div>
+                <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>eBay Market Value</h2>
+                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Based on recently sold listings</p>
+              </div>
+              <button
+                onClick={() => setShowMarket(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                style={{ color: '#94A3B8', background: '#F8FAFC' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {marketLoading && (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <svg className="animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" aria-hidden="true">
+                    <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeOpacity="0.25" />
+                    <path d="M21 12a9 9 0 00-9-9" />
+                  </svg>
+                  <p className="text-sm" style={{ color: '#64748B' }}>Searching eBay sold listings…</p>
+                </div>
+              )}
+
+              {marketError && (
+                <div className="rounded-xl p-4" style={{ background: '#FFF1F2', border: '1px solid #FECDD3' }}>
+                  <p className="text-sm font-semibold mb-1" style={{ color: '#BE123C' }}>Could not fetch market data</p>
+                  <p className="text-sm" style={{ color: '#9F1239' }}>{marketError}</p>
+                  {marketError.includes('API key') && (
+                    <p className="text-xs mt-2" style={{ color: '#9F1239' }}>
+                      Add your eBay App ID to <code>.env.local</code> as <code>EBAY_APP_ID</code>.
+                      Get one free at developer.ebay.com
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {marketData && (
+                <>
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 gap-3 mb-5">
+                    <div className="rounded-xl p-4 text-center" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6EE7B7' }}>Avg Sale Price</p>
+                      <p className="text-2xl font-bold" style={{ color: '#15803D' }}>{usd(marketData.average)}</p>
+                      <p className="text-xs mt-1" style={{ color: '#86EFAC' }}>from {marketData.count} sales</p>
+                    </div>
+                    <div className="rounded-xl p-4 text-center" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#94A3B8' }}>Range</p>
+                      <p className="text-sm font-bold" style={{ color: '#334155' }}>{usd(marketData.low)} – {usd(marketData.high)}</p>
+                      <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Median: {usd(marketData.median)}</p>
+                    </div>
+                  </div>
+
+                  {/* Apply buttons */}
+                  <div className="flex gap-2 mb-5">
+                    <button
+                      onClick={() => handleApplyValue(marketData.average)}
+                      disabled={applyingValue}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }}
+                    >
+                      {applyingValue ? 'Applying…' : `Use Avg: ${usd(marketData.average)}`}
+                    </button>
+                    <button
+                      onClick={() => handleApplyValue(marketData.median)}
+                      disabled={applyingValue}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                      style={{ background: '#F8FAFC', color: '#334155', border: '1px solid #E2E8F0' }}
+                    >
+                      Use Median: {usd(marketData.median)}
+                    </button>
+                  </div>
+
+                  {/* Recent sales */}
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#94A3B8' }}>Recent Sales</p>
+                  <div className="flex flex-col gap-2">
+                    {marketData.listings.map((l, i) => (
+                      <a
+                        key={i}
+                        href={l.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between rounded-xl px-4 py-3 transition-all"
+                        style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#F8FAFC')}
+                      >
+                        <div className="flex-1 min-w-0 mr-3">
+                          <p className="text-xs font-medium truncate" style={{ color: '#334155' }}>{l.title}</p>
+                          <p className="text-xs" style={{ color: '#94A3B8' }}>
+                            {new Date(l.soldDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold shrink-0" style={{ color: '#15803D' }}>{usd(l.price)}</span>
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

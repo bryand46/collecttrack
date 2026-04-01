@@ -178,6 +178,41 @@ function getManufacturerSuggestions(category: string): string[] {
   return MANUFACTURER_SUGGESTIONS[category] ?? []
 }
 
+const EDITION_OPTIONS: Record<string, string[]> = {
+  'Statues & Busts':    ['Standard Edition', 'Exclusive', 'Deluxe Edition', 'Deluxe Exclusive', 'Artist Proof (AP)', 'Premier Edition', 'Polystone Edition', 'Limited Edition', 'Retailer Exclusive'],
+  'Action Figures':     ['Standard Edition', 'Exclusive', 'Deluxe Edition', 'Limited Edition', 'Retailer Exclusive', 'Convention Exclusive', 'Artist Proof (AP)'],
+  'Toys':               ['Standard Edition', 'Exclusive', 'Deluxe Edition', 'Limited Edition', 'Retailer Exclusive'],
+  'Funko Pops':         ['Standard', 'Chase', 'Exclusive', 'Flocked', 'Glow-in-the-Dark (GITD)', 'Metallic', 'Diamond / Glitter', 'Supersized', 'Convention Exclusive'],
+  'LEGO Sets':          ['Standard', 'Limited Edition', 'LEGO Store Exclusive', 'Certified Used'],
+  'Dolls & Plush':      ['Standard Edition', 'Limited Edition', 'Exclusive', 'Deluxe Edition'],
+  'Musical Instruments': ['Standard', 'Limited Edition', 'Signature Model', 'Custom Shop', 'Vintage / Reissue', 'Artist Edition'],
+  'Vinyl Records':      ['Standard Black', 'Colored Vinyl', 'Picture Disc', 'Limited Edition', 'Box Set', '180g / Audiophile', 'Test Pressing', 'Numbered Edition'],
+  'CDs & Cassettes':    ['Standard', 'Limited Edition', 'Deluxe Edition', 'Box Set', 'Picture Disc'],
+  'Watches & Luxury Timepieces': ['Standard', 'Limited Edition', 'Special Edition', 'Anniversary Edition', 'Collaboration'],
+  'Sneakers & Footwear': ['Standard', 'Limited Edition', 'Collaboration', 'Friends & Family', 'Sample / Unreleased'],
+  'Luxury Handbags':    ['Standard', 'Limited Edition', 'Special Order', 'Collaboration'],
+  'Sports Cards':       ['Base / Standard', 'Foil / Holo', 'Refractor', 'Parallel', 'Numbered', 'Autograph', 'Rookie Card', 'Short Print (SP)', 'Super Short Print (SSP)', 'Patch / Relic'],
+  'Trading Cards (Pokémon, Magic, etc.)': ['Standard', 'Holo / Foil', 'Reverse Holo', 'Full Art', 'Secret Rare', 'Rainbow Rare', 'Gold Card', 'First Edition', 'Shadowless'],
+  'Comics & Graphic Novels': ['Standard Cover', 'Variant Cover', 'First Print', 'Second Print', 'Foil Cover', 'Newsstand Edition', 'CGC Graded', 'CBCS Graded'],
+  'Stamps':             ['Standard', 'First Day Cover', 'Mint / Unused', 'Error Stamp', 'Proof'],
+  'Coins':              ['Business Strike', 'Proof', 'Reverse Proof', 'Uncirculated (BU)', 'First Strike', 'Early Release', 'Specimen'],
+  'Bullion (Gold / Silver)': ['Standard', 'Proof', 'Reverse Proof', 'Burnished', 'Enhanced Uncirculated'],
+  'Tokens & Medals':    ['Standard', 'Proof', 'Limited Edition', 'Numbered Edition'],
+  'Art (Paintings & Prints)': ['Open Edition', 'Limited Edition', 'Artist Proof (AP)', "Printer's Proof (PP)", 'Remarque', 'Numbered Edition', 'Hand-Signed'],
+  'Video Games & Consoles': ['Standard Edition', 'Deluxe Edition', "Collector's Edition", 'Ultimate Edition', 'Limited Edition', 'GOTY Edition', 'Steelbook Edition', 'Launch Edition'],
+  'Arcade & Pinball Machines': ['Standard', 'Limited Edition', "Collector's Edition", 'Home Edition', 'Topper Edition'],
+  'Handheld Consoles':  ['Standard', 'Limited Edition', 'Special Edition', 'Bundle'],
+  'Sports Memorabilia': ['Standard', 'Autographed', 'Game-Used', 'Limited Edition', 'Numbered Edition'],
+  'Die-Cast Cars & Vehicles': ['Standard', 'Limited Edition', 'Treasure Hunt', 'Super Treasure Hunt', "Collector's Edition", 'Numbered Edition'],
+  'Books & First Editions': ['First Edition', 'First Printing', 'Signed Edition', 'Limited Edition', 'Proof / ARC', 'Leatherbound'],
+}
+
+const EDITION_FALLBACK = ['Standard Edition', 'Limited Edition', 'Exclusive', 'Deluxe Edition', 'Special Edition', 'Numbered Edition']
+
+function getEditionOptions(category: string): string[] {
+  return EDITION_OPTIONS[category] ?? EDITION_FALLBACK
+}
+
 const inputClass =
   'w-full rounded-lg px-3.5 py-2.5 text-sm font-medium border transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
 const inputStyle = {
@@ -209,6 +244,7 @@ export default function EditItemPage() {
     name: '',
     category: '',
     manufacturer: '',
+    edition: '',
     description: '',
     condition: 'Good',
     paidPrice: '',
@@ -236,6 +272,7 @@ export default function EditItemPage() {
           name: data.name ?? '',
           category: data.category ?? '',
           manufacturer: isKnown ? savedManufacturer : 'Other',
+          edition: data.edition ?? '',
           description: data.description ?? '',
           condition: data.condition ?? 'Good',
           paidPrice: data.paidPrice != null ? String(data.paidPrice) : '',
@@ -266,6 +303,7 @@ export default function EditItemPage() {
         paidPrice: form.paidPrice ? parseFloat(form.paidPrice) : null,
         estimatedValue: form.estimatedValue ? parseFloat(form.estimatedValue) : null,
         manufacturer: effectiveManufacturer || null,
+        edition: (form.edition && form.edition !== '__other__') ? form.edition : null,
       }),
     })
 
@@ -425,6 +463,39 @@ export default function EditItemPage() {
                 style={inputStyle}
               />
             )}
+          </div>
+
+          {/* Edition */}
+          <div>
+            <label htmlFor="edition" className={labelClass} style={labelStyle}>
+              Edition / Variant
+            </label>
+            <div className="flex flex-col gap-2">
+              <select
+                id="edition"
+                name="edition"
+                value={form.edition}
+                onChange={handleChange}
+                className={inputClass}
+                style={inputStyle}
+              >
+                <option value="">None / Standard</option>
+                {getEditionOptions(form.category).map((e) => (
+                  <option key={e} value={e}>{e}</option>
+                ))}
+                <option value="__other__">Other (type below)</option>
+              </select>
+              {form.edition === '__other__' && (
+                <input
+                  type="text"
+                  placeholder="Describe the edition…"
+                  className={inputClass}
+                  style={inputStyle}
+                  onChange={(e) => setForm({ ...form, edition: e.target.value })}
+                  autoFocus
+                />
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

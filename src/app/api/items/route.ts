@@ -18,6 +18,7 @@ export async function POST(request: Request) {
       name: body.name,
       category: body.category,
       manufacturer: body.manufacturer ?? null,
+      edition: body.edition ?? null,
       description: body.description,
       condition: body.condition ?? 'Good',
       paidPrice: body.paidPrice,

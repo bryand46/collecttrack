@@ -33,6 +33,7 @@ export async function PUT(
       name: body.name,
       category: body.category,
       manufacturer: body.manufacturer ?? null,
+      edition: body.edition ?? null,
       description: body.description,
       condition: body.condition,
       paidPrice: body.paidPrice,
