@@ -26,7 +26,8 @@ const conditionColors: Record<string, { bg: string; text: string }> = {
 const usd = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 
-function ItemCard({ item }: { item: Item }) {
+// ── Grid Card ────────────────────────────────────────────────────────────────
+function GridCard({ item }: { item: Item }) {
   const cond = conditionColors[item.condition] ?? { bg: '#F1F5F9', text: '#475569' }
   return (
     <Link href={`/items/${item.id}`}>
@@ -36,18 +37,13 @@ function ItemCard({ item }: { item: Item }) {
         onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.10)' }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)' }}
       >
-        <div
-          className="w-full h-44 flex items-center justify-center overflow-hidden"
-          style={{ background: '#F8FAFC' }}
-        >
+        <div className="w-full h-44 flex items-center justify-center overflow-hidden" style={{ background: '#F8FAFC' }}>
           {item.imageUrl ? (
             <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover object-top" />
           ) : (
             <div className="flex flex-col items-center gap-2">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="1.5" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
+                <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
               </svg>
               <span style={{ color: '#CBD5E1', fontSize: '12px' }}>No image</span>
             </div>
@@ -55,9 +51,7 @@ function ItemCard({ item }: { item: Item }) {
         </div>
         <div className="p-4">
           <div className="flex items-start justify-between gap-2 mb-1">
-            <h3 className="font-semibold text-sm leading-tight line-clamp-2" style={{ color: '#0F172A' }}>
-              {item.name}
-            </h3>
+            <h3 className="font-semibold text-sm leading-tight line-clamp-2" style={{ color: '#0F172A' }}>{item.name}</h3>
             <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: cond.bg, color: cond.text }}>
               {item.condition}
             </span>
@@ -77,11 +71,77 @@ function ItemCard({ item }: { item: Item }) {
   )
 }
 
+// ── List Row ─────────────────────────────────────────────────────────────────
+function ListRow({ item }: { item: Item }) {
+  const cond = conditionColors[item.condition] ?? { bg: '#F1F5F9', text: '#475569' }
+  return (
+    <Link href={`/items/${item.id}`}>
+      <div
+        className="flex items-center gap-4 px-4 py-3 transition-colors"
+        style={{ borderBottom: '1px solid #F8FAFC' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#F8FAFC' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+      >
+        {/* Thumbnail */}
+        <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center" style={{ background: '#F1F5F9' }}>
+          {item.imageUrl ? (
+            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover object-top" />
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="1.5" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+            </svg>
+          )}
+        </div>
+
+        {/* Name + meta */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate" style={{ color: '#0F172A' }}>{item.name}</p>
+          <p className="text-xs truncate" style={{ color: '#64748B' }}>
+            {item.category}{item.manufacturer ? ` · ${item.manufacturer}` : ''}
+          </p>
+        </div>
+
+        {/* Condition */}
+        <span className="hidden sm:inline-flex shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: cond.bg, color: cond.text }}>
+          {item.condition}
+        </span>
+
+        {/* Paid */}
+        <div className="hidden md:block text-right shrink-0 w-24">
+          {item.paidPrice != null ? (
+            <>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>Paid</p>
+              <p className="text-sm font-medium" style={{ color: '#475569' }}>{usd(Number(item.paidPrice))}</p>
+            </>
+          ) : <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>}
+        </div>
+
+        {/* Est. Value */}
+        <div className="text-right shrink-0 w-24">
+          {item.estimatedValue != null ? (
+            <>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>Est. Value</p>
+              <p className="text-sm font-bold" style={{ color: '#16A34A' }}>{usd(Number(item.estimatedValue))}</p>
+            </>
+          ) : <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>}
+        </div>
+
+        {/* Chevron */}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" className="shrink-0" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </div>
+    </Link>
+  )
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState<string>('All')
   const [search, setSearch] = useState('')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   useEffect(() => {
     fetch('/api/items')
@@ -90,13 +150,11 @@ export default function ItemsPage() {
       .catch(() => setLoading(false))
   }, [])
 
-  // Sorted unique categories
   const categories = useMemo(() => {
     const cats = Array.from(new Set(items.map((i) => i.category))).sort()
     return ['All', ...cats]
   }, [items])
 
-  // Filtered + searched items
   const filtered = useMemo(() => {
     return items.filter((item) => {
       const matchCat = activeCategory === 'All' || item.category === activeCategory
@@ -108,7 +166,6 @@ export default function ItemsPage() {
     })
   }, [items, activeCategory, search])
 
-  // Group by category (only when "All" is selected and no search)
   const grouped = useMemo(() => {
     if (activeCategory !== 'All' || search.trim() !== '') return null
     const map: Record<string, Item[]> = {}
@@ -143,8 +200,7 @@ export default function ItemsPage() {
           style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF', boxShadow: '0 2px 8px rgba(59,130,246,0.35)' }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
           Add Item
         </Link>
@@ -166,10 +222,10 @@ export default function ItemsPage() {
         </div>
       ) : (
         <>
-          {/* Search + Category filter bar */}
+          {/* Toolbar: search + category pills + view toggle */}
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
             {/* Search */}
-            <div className="relative flex-1 max-w-xs">
+            <div className="relative flex-shrink-0 w-full sm:w-56">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
@@ -184,7 +240,7 @@ export default function ItemsPage() {
             </div>
 
             {/* Category pills */}
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap flex-1">
               {categories.map((cat) => (
                 <button
                   key={cat}
@@ -198,12 +254,35 @@ export default function ItemsPage() {
                 >
                   {cat}
                   {cat !== 'All' && (
-                    <span className="ml-1 opacity-60">
-                      {items.filter((i) => i.category === cat).length}
-                    </span>
+                    <span className="ml-1 opacity-60">{items.filter((i) => i.category === cat).length}</span>
                   )}
                 </button>
               ))}
+            </div>
+
+            {/* View toggle */}
+            <div className="flex items-center gap-1 flex-shrink-0 p-1 rounded-lg" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+              <button
+                onClick={() => setViewMode('grid')}
+                title="Grid view"
+                className="p-1.5 rounded-md transition-all"
+                style={viewMode === 'grid' ? { background: '#EFF6FF', color: '#3B82F6' } : { color: '#94A3B8' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                title="List view"
+                className="p-1.5 rounded-md transition-all"
+                style={viewMode === 'list' ? { background: '#EFF6FF', color: '#3B82F6' } : { color: '#94A3B8' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -212,6 +291,7 @@ export default function ItemsPage() {
             <div className="space-y-10">
               {grouped.map(([category, catItems]) => (
                 <div key={category}>
+                  {/* Category header */}
                   <div className="flex items-center gap-3 mb-4">
                     <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>{category}</h2>
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
@@ -222,25 +302,34 @@ export default function ItemsPage() {
                       {usd(catItems.reduce((s, i) => s + Number(i.estimatedValue ?? 0), 0))}
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {catItems.map((item) => <ItemCard key={item.id} item={item} />)}
-                  </div>
+
+                  {viewMode === 'grid' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {catItems.map((item) => <GridCard key={item.id} item={item} />)}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl overflow-hidden" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                      {catItems.map((item) => <ListRow key={item.id} item={item} />)}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           ) : (
             /* Flat filtered view */
-            <>
-              {filtered.length === 0 ? (
-                <div className="text-center py-16" style={{ color: '#94A3B8' }}>
-                  <p className="text-sm">No items match your search.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {filtered.map((item) => <ItemCard key={item.id} item={item} />)}
-                </div>
-              )}
-            </>
+            filtered.length === 0 ? (
+              <div className="text-center py-16" style={{ color: '#94A3B8' }}>
+                <p className="text-sm">No items match your search.</p>
+              </div>
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filtered.map((item) => <GridCard key={item.id} item={item} />)}
+              </div>
+            ) : (
+              <div className="rounded-2xl overflow-hidden" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                {filtered.map((item) => <ListRow key={item.id} item={item} />)}
+              </div>
+            )
           )}
         </>
       )}
