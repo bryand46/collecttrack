@@ -5,11 +5,19 @@
   --foreground: #0F172A;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Inter, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  /* Prevent iOS bounce scroll from revealing hidden sidebar */
+  position: relative;
+  width: 100%;
 }
 
 /* ADA-compliant focus styles */

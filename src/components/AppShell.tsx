@@ -54,7 +54,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!profileChecked) return null
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#F1F5F9' }}>
+    <div className="flex min-h-screen overflow-x-hidden" style={{ background: '#F1F5F9' }}>
       {/* ── Mobile overlay backdrop ── */}
       {sidebarOpen && (
         <div
