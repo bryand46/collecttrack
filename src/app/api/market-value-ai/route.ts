@@ -4,6 +4,39 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { withinLookupLimit, needsLookupReset, type Plan } from '@/lib/plans'
 
+// ── Price extraction helpers ─────────────────────────────────────────────────
+
+/** Pull every dollar amount out of a string, e.g. "$120", "$1,200", "$85.00" */
+function extractPrices(text: string): number[] {
+  const matches = text.match(/\$\s*(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)/g) ?? []
+  return matches
+    .map((m) => parseFloat(m.replace(/[$,\s]/g, '')))
+    .filter((n) => n >= 1 && n <= 500_000)   // sanity range
+}
+
+/** Detect obvious site names from a URL */
+function sourceName(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace('www.', '')
+    if (host.includes('ebay'))        return 'eBay'
+    if (host.includes('stockx'))      return 'StockX'
+    if (host.includes('amazon'))      return 'Amazon'
+    if (host.includes('etsy'))        return 'Etsy'
+    if (host.includes('mercari'))     return 'Mercari'
+    if (host.includes('poshmark'))    return 'Poshmark'
+    if (host.includes('grailed'))     return 'Grailed'
+    if (host.includes('pricecharting')) return 'PriceCharting'
+    if (host.includes('tcgplayer'))   return 'TCGPlayer'
+    if (host.includes('goldin'))      return 'Goldin'
+    if (host.includes('comc'))        return 'COMC'
+    return host.split('.')[0]
+  } catch {
+    return 'Web'
+  }
+}
+
+// ── Route ────────────────────────────────────────────────────────────────────
+
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) {
@@ -11,22 +44,21 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url)
-  const query   = searchParams.get('q')    // item name + manufacturer
+  const query     = searchParams.get('q')
   const condition = searchParams.get('condition') ?? ''
-  const edition   = searchParams.get('edition') ?? ''
+  const edition   = searchParams.get('edition')   ?? ''
 
   if (!query) {
     return NextResponse.json({ error: 'Missing query parameter' }, { status: 400 })
   }
 
-  // Check / reset monthly lookup quota (shared with eBay counter)
+  // ── Quota check (shared counter) ──────────────────────────────────────────
   const user = await prisma.user.findUnique({ where: { id: session.user.id } })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
   let { marketLookupCount, marketLookupResetAt } = user
   if (needsLookupReset(marketLookupResetAt)) {
     marketLookupCount = 0
-    marketLookupResetAt = new Date()
     await prisma.user.update({
       where: { id: user.id },
       data: { marketLookupCount: 0, marketLookupResetAt: new Date() },
@@ -39,88 +71,113 @@ export async function GET(request: Request) {
     )
   }
 
-  const apiKey = process.env.PERPLEXITY_API_KEY
+  // ── Brave Search API ───────────────────────────────────────────────────────
+  const apiKey = process.env.BRAVE_SEARCH_API_KEY
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'Perplexity API key not configured. Add PERPLEXITY_API_KEY to your environment variables.' },
+      { error: 'Brave Search API key not configured. Add BRAVE_SEARCH_API_KEY to your environment variables.' },
       { status: 503 }
     )
   }
 
-  // Build a focused search prompt
-  const itemDescription = [
-    condition && `${condition} condition`,
+  // Build a focused resale-value query
+  const searchQuery = [
     query,
-    edition && `(${edition} edition)`,
+    edition   ? `"${edition}"` : '',
+    condition ? condition       : '',
+    'resale value price sold',
   ].filter(Boolean).join(' ')
 
-  const prompt = `What is the current resale / market value of a ${itemDescription}?
+  const braveUrl = new URL('https://api.search.brave.com/res/v1/web/search')
+  braveUrl.searchParams.set('q', searchQuery)
+  braveUrl.searchParams.set('count', '10')          // max results
+  braveUrl.searchParams.set('safesearch', 'moderate')
+  braveUrl.searchParams.set('freshness', 'py')      // past year only
 
-Search recent sold listings across eBay, StockX, Amazon, collector marketplaces, and any specialist sites for this type of item. Focus on sold (completed) sales from the past 6 months.
-
-Respond ONLY with a valid JSON object — no markdown, no explanation outside the JSON — in this exact format:
-{
-  "average": <number in USD, no currency symbol>,
-  "low": <lowest recent sale price as number>,
-  "high": <highest recent sale price as number>,
-  "confidence": "<high|medium|low>",
-  "sources": ["<site name>", "<site name>"],
-  "summary": "<1-2 sentence plain-English explanation of the price range and what drives value>"
-}`
-
-  let perplexityData: any
+  let results: Array<{ title: string; url: string; description: string }>
   try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
+    const res = await fetch(braveUrl.toString(), {
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': apiKey,
       },
-      body: JSON.stringify({
-        model: 'sonar',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a collectibles price research assistant. You always respond with valid JSON only, no markdown fences or extra text.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 400,
-        temperature: 0.2,
-      }),
+      next: { revalidate: 3600 },   // cache for 1 hour per item
     })
 
     if (!res.ok) {
-      const errText = await res.text()
-      console.error('Perplexity error:', errText)
-      return NextResponse.json({ error: 'AI price lookup failed. Try again shortly.' }, { status: 502 })
+      const err = await res.text()
+      console.error('Brave Search error:', err)
+      return NextResponse.json({ error: 'Search request failed. Try again shortly.' }, { status: 502 })
     }
 
-    perplexityData = await res.json()
+    const data = await res.json()
+    results = data?.web?.results ?? []
   } catch (err) {
-    console.error('Perplexity fetch error:', err)
-    return NextResponse.json({ error: 'Could not reach AI pricing service.' }, { status: 502 })
+    console.error('Brave fetch error:', err)
+    return NextResponse.json({ error: 'Could not reach search service.' }, { status: 502 })
   }
 
-  // Parse the JSON from Perplexity's message content
-  let parsed: any
-  try {
-    const content: string = perplexityData.choices?.[0]?.message?.content ?? ''
-    // Strip any accidental markdown fences
-    const clean = content.replace(/```json?/gi, '').replace(/```/g, '').trim()
-    parsed = JSON.parse(clean)
-  } catch {
-    console.error('Failed to parse Perplexity response:', perplexityData)
-    return NextResponse.json({ error: 'Could not parse AI response. Try again.' }, { status: 502 })
+  if (results.length === 0) {
+    return NextResponse.json({ error: 'No results found for this item.' }, { status: 404 })
   }
 
-  const average = Number(parsed.average)
-  const low     = Number(parsed.low)
-  const high    = Number(parsed.high)
+  // ── Extract prices from titles + descriptions ──────────────────────────────
+  const pricesByResult: Array<{ prices: number[]; source: string; url: string; title: string }> = []
 
-  if (!average || isNaN(average)) {
-    return NextResponse.json({ error: 'No pricing data found for this item.' }, { status: 404 })
+  for (const r of results) {
+    const combined = `${r.title} ${r.description ?? ''}`
+    const prices   = extractPrices(combined)
+    if (prices.length > 0) {
+      pricesByResult.push({
+        prices,
+        source: sourceName(r.url),
+        url:    r.url,
+        title:  r.title,
+      })
+    }
   }
+
+  // Flatten all prices for statistics
+  const allPrices = pricesByResult.flatMap((r) => r.prices).sort((a, b) => a - b)
+
+  if (allPrices.length === 0) {
+    return NextResponse.json(
+      { error: 'No price data found in search results. Try a more specific item name.' },
+      { status: 404 }
+    )
+  }
+
+  // Trim top and bottom 10% to reduce noise
+  const trimCount = Math.floor(allPrices.length * 0.1)
+  const trimmed   = allPrices.slice(trimCount, allPrices.length - trimCount || undefined)
+  const workingSet = trimmed.length >= 3 ? trimmed : allPrices
+
+  const sum     = workingSet.reduce((a, b) => a + b, 0)
+  const average = Math.round(sum / workingSet.length)
+  const low     = Math.round(workingSet[0])
+  const high    = Math.round(workingSet[workingSet.length - 1])
+
+  // Confidence: based on number of results with prices and spread
+  const spread = high > 0 ? (high - low) / high : 1
+  const confidence: 'high' | 'medium' | 'low' =
+    pricesByResult.length >= 4 && spread < 0.5 ? 'high'
+    : pricesByResult.length >= 2 && spread < 0.8 ? 'medium'
+    : 'low'
+
+  // Unique sources list
+  const sources = [...new Set(pricesByResult.map((r) => r.source))].slice(0, 5)
+
+  // Top source links to show in the UI
+  const sourceLinks = pricesByResult.slice(0, 4).map((r) => ({
+    title:  r.title,
+    url:    r.url,
+    source: r.source,
+    price:  Math.round(r.prices[0]),
+  }))
+
+  // Summary sentence
+  const summary = `Found ${allPrices.length} price mention${allPrices.length !== 1 ? 's' : ''} across ${sources.join(', ')}. Values ranged from ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(low)} to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(high)}.`
 
   // Increment lookup count
   await prisma.user.update({
@@ -129,11 +186,12 @@ Respond ONLY with a valid JSON object — no markdown, no explanation outside th
   })
 
   return NextResponse.json({
-    average: Math.round(average),
-    low: Math.round(low || average * 0.8),
-    high: Math.round(high || average * 1.2),
-    confidence: parsed.confidence ?? 'medium',
-    sources: Array.isArray(parsed.sources) ? parsed.sources : [],
-    summary: parsed.summary ?? '',
+    average,
+    low,
+    high,
+    confidence,
+    sources,
+    sourceLinks,
+    summary,
   })
 }

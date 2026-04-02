@@ -26,6 +26,7 @@ type AiMarketData = {
   high: number
   confidence: 'high' | 'medium' | 'low'
   sources: string[]
+  sourceLinks: { title: string; url: string; source: string; price: number }[]
   summary: string
 }
 
@@ -382,7 +383,7 @@ export default function ItemDetailPage() {
             <div className="px-6 py-5 border-b flex items-center justify-between" style={{ borderColor: '#E2E8F0' }}>
               <div>
                 <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>Market Value</h2>
-                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>AI-powered search across the web</p>
+                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Searches eBay, StockX, Mercari & more</p>
               </div>
               <button
                 onClick={() => { setShowMarket(false); setManualValue('') }}
@@ -404,7 +405,7 @@ export default function ItemDetailPage() {
                     <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeOpacity="0.25" />
                     <path d="M21 12a9 9 0 00-9-9" />
                   </svg>
-                  <p className="text-sm" style={{ color: '#64748B' }}>Searching across the web…</p>
+                  <p className="text-sm" style={{ color: '#64748B' }}>Searching for prices across the web…</p>
                 </div>
               )}
 
@@ -415,8 +416,7 @@ export default function ItemDetailPage() {
                   <p className="text-sm" style={{ color: '#9F1239' }}>{marketError}</p>
                   {marketError.includes('API key') && (
                     <p className="text-xs mt-2" style={{ color: '#9F1239' }}>
-                      Add <code>PERPLEXITY_API_KEY</code> to your Vercel environment variables.
-                      Get a free key at perplexity.ai/settings/api
+                      Add <code>BRAVE_SEARCH_API_KEY</code> to your Vercel environment variables.
                     </p>
                   )}
                 </div>
@@ -458,11 +458,45 @@ export default function ItemDetailPage() {
                     </div>
                   </div>
 
-                  {/* AI summary */}
+                  {/* Summary */}
                   {marketData.summary && (
-                    <p className="text-sm leading-relaxed mb-5 px-1" style={{ color: '#475569' }}>
+                    <p className="text-sm leading-relaxed mb-4 px-1" style={{ color: '#475569' }}>
                       {marketData.summary}
                     </p>
+                  )}
+
+                  {/* Source links */}
+                  {marketData.sourceLinks?.length > 0 && (
+                    <div className="mb-5">
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#94A3B8' }}>Sources</p>
+                      <div className="flex flex-col gap-2">
+                        {marketData.sourceLinks.map((l, i) => (
+                          <a
+                            key={i}
+                            href={l.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between rounded-xl px-4 py-3 transition-all"
+                            style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = '#F8FAFC')}
+                          >
+                            <div className="flex-1 min-w-0 mr-3">
+                              <p className="text-xs font-medium truncate" style={{ color: '#334155' }}>{l.title}</p>
+                              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{l.source}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-sm font-bold" style={{ color: '#15803D' }}>{usd(l.price)}</span>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" y1="14" x2="21" y2="3" />
+                              </svg>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
                   )}
 
                   {/* Apply average */}
