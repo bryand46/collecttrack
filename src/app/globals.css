@@ -28,8 +28,10 @@ body {
 }
 
 /* ADA: ensure all inputs have visible contrast */
+/* font-size 16px minimum prevents iOS Safari from auto-zooming on focus */
 input, select, textarea {
   color: #0F172A;
+  font-size: 16px;
 }
 
 input::placeholder, textarea::placeholder {
