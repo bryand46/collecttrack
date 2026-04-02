@@ -254,12 +254,56 @@ const inputStyle = {
 const labelClass = 'block text-sm font-semibold mb-1.5'
 const labelStyle = { color: '#1E293B' }
 
+type ValueResult = {
+  average: number
+  low: number
+  high: number
+  confidence: 'high' | 'medium' | 'low'
+  sources: string[]
+  summary: string
+}
+
+const confidenceBadge: Record<string, { bg: string; text: string }> = {
+  high:   { bg: '#DCFCE7', text: '#166534' },
+  medium: { bg: '#FEF9C3', text: '#854D0E' },
+  low:    { bg: '#FEE2E2', text: '#991B1B' },
+}
+
 export default function NewItemPage() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [showImagePicker, setShowImagePicker] = useState(false)
   const [manufacturerOther, setManufacturerOther] = useState('')
   const [preferredGroups, setPreferredGroups] = useState<string[]>([])
+
+  // Market value search
+  const [valueLoading, setValueLoading] = useState(false)
+  const [valueResult, setValueResult] = useState<ValueResult | null>(null)
+  const [valueError, setValueError]   = useState('')
+
+  async function handleSearchValue() {
+    const name = form.name.trim()
+    if (!name) return
+    setValueLoading(true)
+    setValueResult(null)
+    setValueError('')
+
+    const q = [name, effectiveManufacturer].filter(Boolean).join(' ')
+    const params = new URLSearchParams({ q })
+    if (form.condition) params.set('condition', form.condition)
+    if (form.edition && form.edition !== '__other__') params.set('edition', form.edition)
+
+    try {
+      const res = await fetch(`/api/market-value-ai?${params.toString()}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Search failed')
+      setValueResult(data)
+    } catch (err: any) {
+      setValueError(err.message || 'Could not fetch value data.')
+    } finally {
+      setValueLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetch('/api/profile')
@@ -523,22 +567,96 @@ export default function NewItemPage() {
                 style={inputStyle}
               />
             </div>
+
+            {/* Est. Value + search */}
             <div>
               <label htmlFor="estimatedValue" className={labelClass} style={labelStyle}>
                 Est. Value ($)
               </label>
-              <input
-                id="estimatedValue"
-                name="estimatedValue"
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.estimatedValue}
-                onChange={handleChange}
-                placeholder="0.00"
-                className={inputClass}
-                style={inputStyle}
-              />
+              <div className="flex gap-2">
+                <input
+                  id="estimatedValue"
+                  name="estimatedValue"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.estimatedValue}
+                  onChange={handleChange}
+                  placeholder="0.00"
+                  className={inputClass}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <button
+                  type="button"
+                  onClick={handleSearchValue}
+                  disabled={!form.name.trim() || valueLoading}
+                  title={!form.name.trim() ? 'Enter an item name first' : 'Search market value'}
+                  className="shrink-0 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)', color: '#065F46', border: '1px solid #6EE7B7', whiteSpace: 'nowrap' }}
+                >
+                  {valueLoading ? (
+                    <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeOpacity="0.25" />
+                      <path d="M21 12a9 9 0 00-9-9" />
+                    </svg>
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  )}
+                  {valueLoading ? 'Searching…' : 'Find Value'}
+                </button>
+              </div>
+
+              {/* Inline result */}
+              {(valueResult || valueError) && (
+                <div
+                  className="mt-2 rounded-xl p-3"
+                  style={valueError
+                    ? { background: '#FFF1F2', border: '1px solid #FECDD3' }
+                    : { background: '#F0FDF4', border: '1px solid #BBF7D0' }
+                  }
+                >
+                  {valueError ? (
+                    <p className="text-xs" style={{ color: '#BE123C' }}>{valueError}</p>
+                  ) : valueResult && (
+                    <>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div>
+                          <span className="text-xs font-semibold" style={{ color: '#94A3B8' }}>Range: </span>
+                          <span className="text-xs font-medium" style={{ color: '#334155' }}>
+                            ${valueResult.low.toLocaleString()} – ${valueResult.high.toLocaleString()}
+                          </span>
+                        </div>
+                        {(() => {
+                          const badge = confidenceBadge[valueResult.confidence] ?? confidenceBadge.medium
+                          return (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: badge.bg, color: badge.text }}>
+                              {valueResult.confidence} confidence
+                            </span>
+                          )
+                        })()}
+                      </div>
+                      {valueResult.sources.length > 0 && (
+                        <p className="text-xs mb-2" style={{ color: '#64748B' }}>
+                          via {valueResult.sources.join(', ')}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((f) => ({ ...f, estimatedValue: String(valueResult.average) }))
+                          setValueResult(null)
+                        }}
+                        className="w-full py-2 rounded-lg text-xs font-bold transition-all"
+                        style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }}
+                      >
+                        Use Average — ${valueResult.average.toLocaleString()}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
