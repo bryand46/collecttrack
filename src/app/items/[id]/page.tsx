@@ -17,6 +17,7 @@ type Item = {
   imageUrl: string | null
   notes: string | null
   createdAt: string
+  isFavorite: boolean
 }
 
 type SoldListing = {
@@ -66,6 +67,21 @@ export default function ItemDetailPage() {
         setLoading(false)
       })
   }, [params.id])
+
+  async function handleToggleFavorite() {
+    if (!item) return
+    const newVal = !item.isFavorite
+    setItem({ ...item, isFavorite: newVal })
+    try {
+      await fetch(`/api/items/${params.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFavorite: newVal }),
+      })
+    } catch {
+      setItem({ ...item, isFavorite: !newVal })
+    }
+  }
 
   async function handleDelete() {
     if (!confirm('Are you sure you want to delete this item? This cannot be undone.')) return
@@ -181,12 +197,28 @@ export default function ItemDetailPage() {
             <h1 className="text-xl font-bold leading-snug" style={{ color: '#0F172A' }}>
               {item.name}
             </h1>
-            <span
-              className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full mt-0.5"
-              style={{ background: cond.bg, color: cond.text }}
-            >
-              {item.condition}
-            </span>
+            <div className="flex items-center gap-2 shrink-0 mt-0.5">
+              <button
+                onClick={handleToggleFavorite}
+                className="transition-transform active:scale-125"
+                aria-label={item.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24"
+                  fill={item.isFavorite ? '#F59E0B' : 'none'}
+                  stroke={item.isFavorite ? '#F59E0B' : '#CBD5E1'}
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+              </button>
+              <span
+                className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                style={{ background: cond.bg, color: cond.text }}
+              >
+                {item.condition}
+              </span>
+            </div>
           </div>
 
           {/* Meta */}

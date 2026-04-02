@@ -46,6 +46,22 @@ export async function PUT(
   return NextResponse.json(item)
 }
 
+// PATCH /api/items/:id — partial update (e.g. toggle isFavorite)
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const body = await request.json()
+
+  const item = await prisma.item.update({
+    where: { id },
+    data: body,
+  })
+
+  return NextResponse.json(item)
+}
+
 // DELETE /api/items/:id — delete an item
 export async function DELETE(
   request: Request,

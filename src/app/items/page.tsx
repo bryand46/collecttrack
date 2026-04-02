@@ -17,6 +17,7 @@ type Item = {
   notes: string | null
   acquiredAt: string | null
   createdAt: string
+  isFavorite: boolean
 }
 
 const conditionColors: Record<string, { bg: string; text: string }> = {
@@ -31,8 +32,32 @@ const conditionColors: Record<string, { bg: string; text: string }> = {
 const usd = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 
+// ── Star Button ──────────────────────────────────────────────────────────────
+function StarButton({ item, onToggle }: { item: Item; onToggle: (id: string, val: boolean) => void }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onToggle(item.id, !item.isFavorite)
+      }}
+      className="transition-transform active:scale-125"
+      aria-label={item.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24"
+        fill={item.isFavorite ? '#F59E0B' : 'none'}
+        stroke={item.isFavorite ? '#F59E0B' : '#CBD5E1'}
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+      </svg>
+    </button>
+  )
+}
+
 // ── Grid Card ────────────────────────────────────────────────────────────────
-function GridCard({ item }: { item: Item }) {
+function GridCard({ item, onToggleFavorite }: { item: Item; onToggleFavorite: (id: string, val: boolean) => void }) {
   const cond = conditionColors[item.condition] ?? { bg: '#F1F5F9', text: '#475569' }
   return (
     <Link href={`/items/${item.id}`}>
@@ -42,7 +67,7 @@ function GridCard({ item }: { item: Item }) {
         onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.10)' }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)' }}
       >
-        <div className="w-full h-44 flex items-center justify-center overflow-hidden" style={{ background: '#F8FAFC' }}>
+        <div className="w-full h-44 flex items-center justify-center overflow-hidden relative" style={{ background: '#F8FAFC' }}>
           {item.imageUrl ? (
             <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover object-top" />
           ) : (
@@ -53,6 +78,10 @@ function GridCard({ item }: { item: Item }) {
               <span style={{ color: '#CBD5E1', fontSize: '12px' }}>No image</span>
             </div>
           )}
+          {/* Star overlay on image */}
+          <div className="absolute top-2 right-2">
+            <StarButton item={item} onToggle={onToggleFavorite} />
+          </div>
         </div>
         <div className="p-4">
           <div className="flex items-start justify-between gap-2 mb-1">
@@ -77,7 +106,7 @@ function GridCard({ item }: { item: Item }) {
 }
 
 // ── List Row ─────────────────────────────────────────────────────────────────
-function ListRow({ item }: { item: Item }) {
+function ListRow({ item, onToggleFavorite }: { item: Item; onToggleFavorite: (id: string, val: boolean) => void }) {
   const cond = conditionColors[item.condition] ?? { bg: '#F1F5F9', text: '#475569' }
   return (
     <Link href={`/items/${item.id}`}>
@@ -131,6 +160,9 @@ function ListRow({ item }: { item: Item }) {
           ) : <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>}
         </div>
 
+        {/* Favorite star */}
+        <StarButton item={item} onToggle={onToggleFavorite} />
+
         {/* Chevron */}
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" className="shrink-0" aria-hidden="true">
           <polyline points="9 18 15 12 9 6" />
@@ -145,10 +177,26 @@ export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState<string>('All')
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [exportOpen, setExportOpen] = useState(false)
   const exportRef = useRef<HTMLDivElement>(null)
+
+  async function toggleFavorite(id: string, val: boolean) {
+    // Optimistic update
+    setItems((prev) => prev.map((item) => item.id === id ? { ...item, isFavorite: val } : item))
+    try {
+      await fetch(`/api/items/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFavorite: val }),
+      })
+    } catch {
+      // Revert on error
+      setItems((prev) => prev.map((item) => item.id === id ? { ...item, isFavorite: !val } : item))
+    }
+  }
 
   // Close export dropdown on outside click
   useEffect(() => {
@@ -175,24 +223,26 @@ export default function ItemsPage() {
 
   const filtered = useMemo(() => {
     return items.filter((item) => {
+      const matchFav = !showFavoritesOnly || item.isFavorite
       const matchCat = activeCategory === 'All' || item.category === activeCategory
       const matchSearch =
         search.trim() === '' ||
         item.name.toLowerCase().includes(search.toLowerCase()) ||
         (item.manufacturer ?? '').toLowerCase().includes(search.toLowerCase())
-      return matchCat && matchSearch
+      return matchFav && matchCat && matchSearch
     })
-  }, [items, activeCategory, search])
+  }, [items, activeCategory, showFavoritesOnly, search])
 
   const grouped = useMemo(() => {
-    if (activeCategory !== 'All' || search.trim() !== '') return null
+    // No grouping when filtering by favorites, category, or search
+    if (showFavoritesOnly || activeCategory !== 'All' || search.trim() !== '') return null
     const map: Record<string, Item[]> = {}
     items.forEach((item) => {
       if (!map[item.category]) map[item.category] = []
       map[item.category].push(item)
     })
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
-  }, [items, activeCategory, search])
+  }, [items, activeCategory, showFavoritesOnly, search])
 
   if (loading) {
     return (
@@ -316,15 +366,41 @@ export default function ItemsPage() {
               />
             </div>
 
-            {/* Category pills */}
+            {/* Filter pills: Favorites + Categories */}
             <div className="flex gap-2 flex-wrap flex-1">
+              {/* Favorites pill */}
+              <button
+                onClick={() => {
+                  setShowFavoritesOnly((v) => !v)
+                  setActiveCategory('All')
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                style={
+                  showFavoritesOnly
+                    ? { background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }
+                    : { background: '#FFFFFF', border: '1px solid #E2E8F0', color: '#64748B' }
+                }
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24"
+                  fill={showFavoritesOnly ? '#F59E0B' : 'none'}
+                  stroke={showFavoritesOnly ? '#F59E0B' : '#94A3B8'}
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+                Favorites
+                <span className="opacity-60">{items.filter((i) => i.isFavorite).length}</span>
+              </button>
+
+              {/* Category pills */}
               {categories.map((cat) => (
                 <button
                   key={cat}
-                  onClick={() => setActiveCategory(cat)}
+                  onClick={() => { setActiveCategory(cat); setShowFavoritesOnly(false) }}
                   className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
                   style={
-                    activeCategory === cat
+                    !showFavoritesOnly && activeCategory === cat
                       ? { background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }
                       : { background: '#FFFFFF', border: '1px solid #E2E8F0', color: '#64748B' }
                   }
@@ -382,11 +458,11 @@ export default function ItemsPage() {
 
                   {viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {catItems.map((item) => <GridCard key={item.id} item={item} />)}
+                      {catItems.map((item) => <GridCard key={item.id} item={item} onToggleFavorite={toggleFavorite} />)}
                     </div>
                   ) : (
                     <div className="rounded-2xl overflow-hidden" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                      {catItems.map((item) => <ListRow key={item.id} item={item} />)}
+                      {catItems.map((item) => <ListRow key={item.id} item={item} onToggleFavorite={toggleFavorite} />)}
                     </div>
                   )}
                 </div>
@@ -400,11 +476,11 @@ export default function ItemsPage() {
               </div>
             ) : viewMode === 'grid' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filtered.map((item) => <GridCard key={item.id} item={item} />)}
+                {filtered.map((item) => <GridCard key={item.id} item={item} onToggleFavorite={toggleFavorite} />)}
               </div>
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                {filtered.map((item) => <ListRow key={item.id} item={item} />)}
+                {filtered.map((item) => <ListRow key={item.id} item={item} onToggleFavorite={toggleFavorite} />)}
               </div>
             )
           )}
