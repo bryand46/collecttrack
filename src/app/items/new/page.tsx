@@ -288,9 +288,9 @@ export default function NewItemPage() {
     setValueResult(null)
     setValueError('')
 
-    const q = [name, effectiveManufacturer].filter(Boolean).join(' ')
-    const params = new URLSearchParams({ q })
-    if (form.condition) params.set('condition', form.condition)
+    const params = new URLSearchParams({ name })
+    if (effectiveManufacturer) params.set('manufacturer', effectiveManufacturer)
+    if (form.condition)        params.set('condition', form.condition)
     if (form.edition && form.edition !== '__other__') params.set('edition', form.edition)
 
     try {

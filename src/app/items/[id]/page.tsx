@@ -94,10 +94,10 @@ export default function ItemDetailPage() {
     setMarketError('')
     setMarketData(null)
 
-    const query = [item.name, item.manufacturer].filter(Boolean).join(' ')
-    const params2 = new URLSearchParams({ q: query })
-    if (item.condition) params2.set('condition', item.condition)
-    if (item.edition)   params2.set('edition', item.edition)
+    const params2 = new URLSearchParams({ name: item.name })
+    if (item.manufacturer) params2.set('manufacturer', item.manufacturer)
+    if (item.condition)    params2.set('condition', item.condition)
+    if (item.edition)      params2.set('edition', item.edition)
 
     try {
       const res = await fetch(`/api/market-value-ai?${params2.toString()}`)
