@@ -6,7 +6,6 @@ import { withinLookupLimit, needsLookupReset, type Plan } from '@/lib/plans'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Pull dollar amounts from a string — ignores cents-only values like $0.99 */
 function extractPrices(text: string): number[] {
   const matches = text.match(/\$\s*(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)/g) ?? []
   return matches
@@ -14,47 +13,73 @@ function extractPrices(text: string): number[] {
     .filter((n) => n >= 5 && n <= 500_000)
 }
 
-/**
- * IQR-based outlier removal.
- * Removes prices that fall outside [Q1 − 1.5×IQR, Q3 + 1.5×IQR].
- * Requires at least 4 values to make meaningful quartiles; returns original
- * array unchanged if there aren't enough.
- */
 function removeOutliers(prices: number[]): number[] {
   if (prices.length < 4) return prices
-  const s  = [...prices].sort((a, b) => a - b)
-  const q1 = s[Math.floor(s.length * 0.25)]
-  const q3 = s[Math.floor(s.length * 0.75)]
+  const s   = [...prices].sort((a, b) => a - b)
+  const q1  = s[Math.floor(s.length * 0.25)]
+  const q3  = s[Math.floor(s.length * 0.75)]
   const iqr = q3 - q1
-  // If IQR is 0 (all same value) keep everything
   if (iqr === 0) return prices
   const lower = q1 - 1.5 * iqr
   const upper = q3 + 1.5 * iqr
   return s.filter((p) => p >= lower && p <= upper)
 }
 
-/** Detect site name from URL */
 function sourceName(url: string): string {
   try {
     const host = new URL(url).hostname.replace('www.', '')
-    if (host.includes('ebay'))          return 'eBay'
-    if (host.includes('stockx'))        return 'StockX'
-    if (host.includes('amazon'))        return 'Amazon'
-    if (host.includes('etsy'))          return 'Etsy'
-    if (host.includes('mercari'))       return 'Mercari'
-    if (host.includes('poshmark'))      return 'Poshmark'
-    if (host.includes('grailed'))       return 'Grailed'
-    if (host.includes('pricecharting')) return 'PriceCharting'
-    if (host.includes('tcgplayer'))     return 'TCGPlayer'
-    if (host.includes('goldin'))        return 'Goldin'
-    if (host.includes('comc'))          return 'COMC'
-    if (host.includes('sideshow'))      return 'Sideshow'
-    if (host.includes('bigbadtoystore'))return 'BigBadToyStore'
-    if (host.includes('hobbylink'))     return 'HobbyLinkJapan'
+    if (host.includes('ebay'))           return 'eBay'
+    if (host.includes('stockx'))         return 'StockX'
+    if (host.includes('amazon'))         return 'Amazon'
+    if (host.includes('etsy'))           return 'Etsy'
+    if (host.includes('mercari'))        return 'Mercari'
+    if (host.includes('poshmark'))       return 'Poshmark'
+    if (host.includes('grailed'))        return 'Grailed'
+    if (host.includes('pricecharting'))  return 'PriceCharting'
+    if (host.includes('tcgplayer'))      return 'TCGPlayer'
+    if (host.includes('goldin'))         return 'Goldin'
+    if (host.includes('comc'))           return 'COMC'
+    if (host.includes('sideshow'))       return 'Sideshow'
+    if (host.includes('bigbadtoystore')) return 'BigBadToyStore'
     return host.split('.')[0]
   } catch {
     return 'Web'
   }
+}
+
+async function searchBrave(
+  query: string,
+  apiKey: string
+): Promise<Array<{ title: string; url: string; description: string }>> {
+  const url = new URL('https://api.search.brave.com/res/v1/web/search')
+  url.searchParams.set('q', query)
+  url.searchParams.set('count', '10')
+  url.searchParams.set('safesearch', 'moderate')
+  url.searchParams.set('freshness', 'py')
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      'Accept': 'application/json',
+      'Accept-Encoding': 'gzip',
+      'X-Subscription-Token': apiKey,
+    },
+  })
+  if (!res.ok) throw new Error(`Brave API error ${res.status}`)
+  const data = await res.json()
+  return data?.web?.results ?? []
+}
+
+function extractPricesFromResults(
+  results: Array<{ title: string; url: string; description: string }>
+): Array<{ prices: number[]; source: string; url: string; title: string }> {
+  const out = []
+  for (const r of results) {
+    const prices = extractPrices(`${r.title} ${r.description ?? ''}`)
+    if (prices.length > 0) {
+      out.push({ prices, source: sourceName(r.url), url: r.url, title: r.title })
+    }
+  }
+  return out
 }
 
 // ── Route ────────────────────────────────────────────────────────────────────
@@ -66,7 +91,6 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url)
-  // Accept name + manufacturer separately so we can quote them precisely
   const name         = (searchParams.get('name') || searchParams.get('q') || '').trim()
   const manufacturer = (searchParams.get('manufacturer') || '').trim()
   const condition    = (searchParams.get('condition') || '').trim()
@@ -76,7 +100,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Missing item name' }, { status: 400 })
   }
 
-  // ── Quota check ───────────────────────────────────────────────────────────
+  // ── Quota ─────────────────────────────────────────────────────────────────
   const user = await prisma.user.findUnique({ where: { id: session.user.id } })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
@@ -95,51 +119,42 @@ export async function GET(request: Request) {
     )
   }
 
-  // ── Brave Search ──────────────────────────────────────────────────────────
   const apiKey = process.env.BRAVE_SEARCH_API_KEY
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'Brave Search API key not configured. Add BRAVE_SEARCH_API_KEY to your environment variables.' },
+      { error: 'Brave Search API key not configured.' },
       { status: 503 }
     )
   }
 
-  // Quote both name and manufacturer so results must contain those exact terms.
-  // This prevents "Batman" returning Funko Pop results when we mean
-  // "Batman Premium Format Figure by Sideshow Collectibles".
-  const quotedName = `"${name}"`
-  const quotedMfr  = manufacturer ? `"${manufacturer}"` : ''
-  const editionStr = edition && edition !== '__other__' ? `"${edition}"` : ''
+  // ── Two-pass search strategy ───────────────────────────────────────────────
+  // Pass 1 (strict): quote both name AND manufacturer — prevents cross-category
+  //   contamination (e.g. "Batman" matching Funko Pops when we mean Sideshow).
+  // Pass 2 (relaxed): if strict returns no prices, drop the quotes and try
+  //   manufacturer + name as plain terms — helps generic names like "Lighthouse"
+  //   where quoting is too restrictive.
 
-  const searchQuery = [quotedName, quotedMfr, editionStr, 'sold price']
-    .filter(Boolean)
-    .join(' ')
+  const editionStr  = edition && edition !== '__other__' ? `"${edition}"` : ''
+  const strictQuery = [`"${name}"`, manufacturer ? `"${manufacturer}"` : '', editionStr, 'sold price']
+    .filter(Boolean).join(' ')
+  const relaxedQuery = [manufacturer, name, editionStr, 'sold price']
+    .filter(Boolean).join(' ')
 
-  const braveUrl = new URL('https://api.search.brave.com/res/v1/web/search')
-  braveUrl.searchParams.set('q', searchQuery)
-  braveUrl.searchParams.set('count', '10')
-  braveUrl.searchParams.set('safesearch', 'moderate')
-  braveUrl.searchParams.set('freshness', 'py')   // past year
+  let results: Array<{ title: string; url: string; description: string }> = []
+  let usedFallback = false
 
-  let results: Array<{ title: string; url: string; description: string }>
   try {
-    const res = await fetch(braveUrl.toString(), {
-      headers: {
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip',
-        'X-Subscription-Token': apiKey,
-      },
-      next: { revalidate: 3600 },
-    })
+    results = await searchBrave(strictQuery, apiKey)
 
-    if (!res.ok) {
-      const err = await res.text()
-      console.error('Brave Search error:', err)
-      return NextResponse.json({ error: 'Search request failed. Try again shortly.' }, { status: 502 })
+    // If strict search found results but none have prices, try relaxed
+    const strictPrices = extractPricesFromResults(results)
+    if (strictPrices.flatMap((r) => r.prices).length === 0 && relaxedQuery !== strictQuery) {
+      const relaxedResults = await searchBrave(relaxedQuery, apiKey)
+      if (relaxedResults.length > 0) {
+        results = relaxedResults
+        usedFallback = true
+      }
     }
-
-    const data = await res.json()
-    results = data?.web?.results ?? []
   } catch (err) {
     console.error('Brave fetch error:', err)
     return NextResponse.json({ error: 'Could not reach search service.' }, { status: 502 })
@@ -147,62 +162,41 @@ export async function GET(request: Request) {
 
   if (results.length === 0) {
     return NextResponse.json(
-      { error: `No search results found for "${name}"${manufacturer ? ` by ${manufacturer}` : ''}. Try adjusting the item name.` },
+      { error: `No results found for "${name}"${manufacturer ? ` by ${manufacturer}` : ''}. Try making the item name more specific (e.g. include a set number or model name).` },
       { status: 404 }
     )
   }
 
-  // ── Extract prices ────────────────────────────────────────────────────────
-  const pricesByResult: Array<{ prices: number[]; source: string; url: string; title: string }> = []
-
-  for (const r of results) {
-    const combined = `${r.title} ${r.description ?? ''}`
-    const prices   = extractPrices(combined)
-    if (prices.length > 0) {
-      pricesByResult.push({
-        prices,
-        source: sourceName(r.url),
-        url:    r.url,
-        title:  r.title,
-      })
-    }
-  }
-
+  // ── Extract & clean prices ─────────────────────────────────────────────────
+  const pricesByResult = extractPricesFromResults(results)
   const rawPrices = pricesByResult.flatMap((r) => r.prices).sort((a, b) => a - b)
 
   if (rawPrices.length === 0) {
+    // Context-aware hint
+    const hint = manufacturer
+      ? `Try making the item name more specific — e.g. include a model number, set number, or edition.`
+      : `Try adding the manufacturer name for a more precise search.`
     return NextResponse.json(
-      { error: 'Search results found but no price data could be extracted. Try including the manufacturer name.' },
+      { error: `Found search results for "${name}" but couldn't extract any prices. ${hint}` },
       { status: 404 }
     )
   }
 
-  // ── Outlier removal (IQR method) ──────────────────────────────────────────
   const cleanedPrices = removeOutliers(rawPrices)
-
-  // ── Coherence check ───────────────────────────────────────────────────────
-  // If the cleaned price spread is still wider than 10× the lowest value,
-  // the data is too noisy to trust — refuse to give a number.
-  const cleanLow  = cleanedPrices[0]
-  const cleanHigh = cleanedPrices[cleanedPrices.length - 1]
-  const spreadRatio = cleanLow > 0 ? cleanHigh / cleanLow : Infinity
+  const cleanLow      = cleanedPrices[0]
+  const cleanHigh     = cleanedPrices[cleanedPrices.length - 1]
+  const spreadRatio   = cleanLow > 0 ? cleanHigh / cleanLow : Infinity
 
   if (cleanedPrices.length < 2) {
     return NextResponse.json(
-      {
-        error: `Only one price data point found — not enough to give a reliable estimate for "${name}". ` +
-               `Try searching manually on eBay or StockX for the most accurate value.`,
-      },
+      { error: `Only one price point found for "${name}" — not enough for a reliable estimate. Check eBay or StockX directly for the most accurate value.` },
       { status: 404 }
     )
   }
 
   if (spreadRatio > 10) {
     return NextResponse.json(
-      {
-        error: `Price data found but results are inconsistent (ranging from $${Math.round(cleanLow).toLocaleString()} to $${Math.round(cleanHigh).toLocaleString()}). ` +
-               `This usually means the search matched different items. Try adding the manufacturer name for a more precise lookup.`,
-      },
+      { error: `Prices found but they're too inconsistent ($${Math.round(cleanLow).toLocaleString()}–$${Math.round(cleanHigh).toLocaleString()}) — the search likely matched different items. Try adding a model or set number to the item name.` },
       { status: 404 }
     )
   }
@@ -213,7 +207,6 @@ export async function GET(request: Request) {
   const low     = Math.round(cleanLow)
   const high    = Math.round(cleanHigh)
 
-  // Confidence: how many independent sources + how tight the spread is
   const spread = high > 0 ? (high - low) / high : 1
   const confidence: 'high' | 'medium' | 'low' =
     pricesByResult.length >= 4 && spread < 0.4 ? 'high'
@@ -231,12 +224,14 @@ export async function GET(request: Request) {
   const usd = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 
+  const outlierCount = rawPrices.length - cleanedPrices.length
   const summary =
-    `Found ${cleanedPrices.length} price point${cleanedPrices.length !== 1 ? 's' : ''} ` +
-    `(${rawPrices.length - cleanedPrices.length > 0 ? `${rawPrices.length - cleanedPrices.length} outlier${rawPrices.length - cleanedPrices.length !== 1 ? 's' : ''} removed, ` : ''}` +
-    `range ${usd(low)}–${usd(high)}) across ${sources.join(', ')}.`
+    `Found ${cleanedPrices.length} price point${cleanedPrices.length !== 1 ? 's' : ''}` +
+    (outlierCount > 0 ? ` (${outlierCount} outlier${outlierCount !== 1 ? 's' : ''} removed)` : '') +
+    ` across ${sources.join(', ')}` +
+    (usedFallback ? ` — used broader search terms to find results` : '') +
+    `.`
 
-  // ── Increment quota ───────────────────────────────────────────────────────
   await prisma.user.update({
     where: { id: user.id },
     data: { marketLookupCount: { increment: 1 } },
