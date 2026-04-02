@@ -20,20 +20,13 @@ type Item = {
   isFavorite: boolean
 }
 
-type SoldListing = {
-  title: string
-  price: number
-  soldDate: string
-  url: string
-}
-
-type MarketData = {
+type AiMarketData = {
   average: number
-  median: number
   low: number
   high: number
-  count: number
-  listings: SoldListing[]
+  confidence: 'high' | 'medium' | 'low'
+  sources: string[]
+  summary: string
 }
 
 const conditionColors: Record<string, { bg: string; text: string }> = {
@@ -45,6 +38,12 @@ const conditionColors: Record<string, { bg: string; text: string }> = {
   Poor: { bg: '#FEE2E2', text: '#991B1B' },
 }
 
+const confidenceBadge: Record<string, { bg: string; text: string; label: string }> = {
+  high:   { bg: '#DCFCE7', text: '#166534', label: 'High confidence' },
+  medium: { bg: '#FEF9C3', text: '#854D0E', label: 'Medium confidence' },
+  low:    { bg: '#FEE2E2', text: '#991B1B', label: 'Low confidence' },
+}
+
 export default function ItemDetailPage() {
   const router = useRouter()
   const params = useParams()
@@ -52,12 +51,16 @@ export default function ItemDetailPage() {
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
 
-  // Market value state
+  // AI market value state
   const [showMarket, setShowMarket] = useState(false)
   const [marketLoading, setMarketLoading] = useState(false)
-  const [marketData, setMarketData] = useState<MarketData | null>(null)
+  const [marketData, setMarketData] = useState<AiMarketData | null>(null)
   const [marketError, setMarketError] = useState('')
   const [applyingValue, setApplyingValue] = useState(false)
+
+  // Manual override state
+  const [manualValue, setManualValue] = useState('')
+  const [savingManual, setSavingManual] = useState(false)
 
   useEffect(() => {
     fetch(`/api/items/${params.id}`)
@@ -83,13 +86,6 @@ export default function ItemDetailPage() {
     }
   }
 
-  async function handleDelete() {
-    if (!confirm('Are you sure you want to delete this item? This cannot be undone.')) return
-    setDeleting(true)
-    await fetch(`/api/items/${params.id}`, { method: 'DELETE' })
-    router.push('/items')
-  }
-
   async function handleFindMarketValue() {
     if (!item) return
     setShowMarket(true)
@@ -97,15 +93,18 @@ export default function ItemDetailPage() {
     setMarketError('')
     setMarketData(null)
 
-    const query = [item.name, item.manufacturer, item.edition]
-      .filter(Boolean)
-      .join(' ')
+    const query = [item.name, item.manufacturer].filter(Boolean).join(' ')
+    const params2 = new URLSearchParams({ q: query })
+    if (item.condition) params2.set('condition', item.condition)
+    if (item.edition)   params2.set('edition', item.edition)
 
     try {
-      const res = await fetch(`/api/market-value?q=${encodeURIComponent(query)}`)
+      const res = await fetch(`/api/market-value-ai?${params2.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to fetch market data')
       setMarketData(data)
+      // Pre-fill manual field with the AI average
+      setManualValue(String(data.average))
     } catch (err: any) {
       setMarketError(err.message || 'Could not fetch market data.')
     } finally {
@@ -124,6 +123,30 @@ export default function ItemDetailPage() {
     setItem({ ...item, estimatedValue: value })
     setApplyingValue(false)
     setShowMarket(false)
+    setManualValue('')
+  }
+
+  async function handleSaveManual() {
+    if (!item || !manualValue) return
+    const num = parseFloat(manualValue.replace(/[^0-9.]/g, ''))
+    if (isNaN(num) || num <= 0) return
+    setSavingManual(true)
+    await fetch(`/api/items/${params.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...item, estimatedValue: num }),
+    })
+    setItem({ ...item, estimatedValue: num })
+    setSavingManual(false)
+    setShowMarket(false)
+    setManualValue('')
+  }
+
+  async function handleDelete() {
+    if (!confirm('Are you sure you want to delete this item? This cannot be undone.')) return
+    setDeleting(true)
+    await fetch(`/api/items/${params.id}`, { method: 'DELETE' })
+    router.push('/items')
   }
 
   if (loading) {
@@ -144,13 +167,11 @@ export default function ItemDetailPage() {
   const usd = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 
-  const paidNum = item.paidPrice != null ? Number(item.paidPrice) : null
+  const paidNum  = item.paidPrice      != null ? Number(item.paidPrice)      : null
   const valueNum = item.estimatedValue != null ? Number(item.estimatedValue) : null
-  const gain = paidNum != null && valueNum != null ? valueNum - paidNum : null
-  const gainPct =
-    gain != null && paidNum && paidNum > 0
-      ? ((gain / paidNum) * 100).toFixed(1)
-      : null
+  const gain     = paidNum != null && valueNum != null ? valueNum - paidNum : null
+  const gainPct  = gain != null && paidNum && paidNum > 0
+    ? ((gain / paidNum) * 100).toFixed(1) : null
 
   const cond = conditionColors[item.condition] ?? { bg: '#F1F5F9', text: '#475569' }
 
@@ -248,7 +269,7 @@ export default function ItemDetailPage() {
           )}
 
           {/* Valuation cards */}
-          <div className="grid grid-cols-3 sm:grid-cols-3 gap-3 mb-5">
+          <div className="grid grid-cols-3 gap-3 mb-3">
             <div className="rounded-xl p-3 text-center" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
               <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: '#94A3B8' }}>Paid</p>
               <p className="text-lg font-bold" style={{ color: '#334155' }}>
@@ -282,7 +303,7 @@ export default function ItemDetailPage() {
             </div>
           </div>
 
-          {/* Find Market Value button */}
+          {/* Value lookup button */}
           <button
             onClick={handleFindMarketValue}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold mb-5 transition-all"
@@ -293,11 +314,9 @@ export default function ItemDetailPage() {
             }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            Find Market Value on eBay
+            Find Market Value
           </button>
 
           {/* Details */}
@@ -349,7 +368,7 @@ export default function ItemDetailPage() {
         </div>
       </div>
 
-      {/* Market Value Modal */}
+      {/* ── Market Value Modal ─────────────────────────────────────────────── */}
       {showMarket && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -362,11 +381,11 @@ export default function ItemDetailPage() {
             {/* Modal header */}
             <div className="px-6 py-5 border-b flex items-center justify-between" style={{ borderColor: '#E2E8F0' }}>
               <div>
-                <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>eBay Market Value</h2>
-                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Based on recently sold listings</p>
+                <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>Market Value</h2>
+                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>AI-powered search across the web</p>
               </div>
               <button
-                onClick={() => setShowMarket(false)}
+                onClick={() => { setShowMarket(false); setManualValue('') }}
                 className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
                 style={{ color: '#94A3B8', background: '#F8FAFC' }}
               >
@@ -377,91 +396,126 @@ export default function ItemDetailPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
+
+              {/* Loading */}
               {marketLoading && (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <svg className="animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" aria-hidden="true">
                     <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeOpacity="0.25" />
                     <path d="M21 12a9 9 0 00-9-9" />
                   </svg>
-                  <p className="text-sm" style={{ color: '#64748B' }}>Searching eBay sold listings…</p>
+                  <p className="text-sm" style={{ color: '#64748B' }}>Searching across the web…</p>
                 </div>
               )}
 
-              {marketError && (
-                <div className="rounded-xl p-4" style={{ background: '#FFF1F2', border: '1px solid #FECDD3' }}>
+              {/* Error */}
+              {marketError && !marketLoading && (
+                <div className="rounded-xl p-4 mb-5" style={{ background: '#FFF1F2', border: '1px solid #FECDD3' }}>
                   <p className="text-sm font-semibold mb-1" style={{ color: '#BE123C' }}>Could not fetch market data</p>
                   <p className="text-sm" style={{ color: '#9F1239' }}>{marketError}</p>
                   {marketError.includes('API key') && (
                     <p className="text-xs mt-2" style={{ color: '#9F1239' }}>
-                      Add your eBay App ID to <code>.env.local</code> as <code>EBAY_APP_ID</code>.
-                      Get one free at developer.ebay.com
+                      Add <code>PERPLEXITY_API_KEY</code> to your Vercel environment variables.
+                      Get a free key at perplexity.ai/settings/api
                     </p>
                   )}
                 </div>
               )}
 
-              {marketData && (
+              {/* AI Result */}
+              {marketData && !marketLoading && (
                 <>
-                  {/* Stats */}
-                  <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 mb-5">
-                    <div className="rounded-xl p-4 text-center" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6EE7B7' }}>Avg Sale Price</p>
-                      <p className="text-2xl font-bold" style={{ color: '#15803D' }}>{usd(marketData.average)}</p>
-                      <p className="text-xs mt-1" style={{ color: '#86EFAC' }}>from {marketData.count} sales</p>
-                    </div>
-                    <div className="rounded-xl p-4 text-center" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#94A3B8' }}>Range</p>
-                      <p className="text-sm font-bold" style={{ color: '#334155' }}>{usd(marketData.low)} – {usd(marketData.high)}</p>
-                      <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Median: {usd(marketData.median)}</p>
-                    </div>
-                  </div>
-
-                  {/* Apply buttons */}
-                  <div className="flex gap-2 mb-5">
-                    <button
-                      onClick={() => handleApplyValue(marketData.average)}
-                      disabled={applyingValue}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                      style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }}
-                    >
-                      {applyingValue ? 'Applying…' : `Use Avg: ${usd(marketData.average)}`}
-                    </button>
-                    <button
-                      onClick={() => handleApplyValue(marketData.median)}
-                      disabled={applyingValue}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                      style={{ background: '#F8FAFC', color: '#334155', border: '1px solid #E2E8F0' }}
-                    >
-                      Use Median: {usd(marketData.median)}
-                    </button>
-                  </div>
-
-                  {/* Recent sales */}
-                  <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#94A3B8' }}>Recent Sales</p>
-                  <div className="flex flex-col gap-2">
-                    {marketData.listings.map((l, i) => (
-                      <a
-                        key={i}
-                        href={l.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between rounded-xl px-4 py-3 transition-all"
-                        style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = '#F8FAFC')}
-                      >
-                        <div className="flex-1 min-w-0 mr-3">
-                          <p className="text-xs font-medium truncate" style={{ color: '#334155' }}>{l.title}</p>
-                          <p className="text-xs" style={{ color: '#94A3B8' }}>
-                            {new Date(l.soldDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </p>
-                        </div>
-                        <span className="text-sm font-bold shrink-0" style={{ color: '#15803D' }}>{usd(l.price)}</span>
-                      </a>
+                  {/* Confidence + sources */}
+                  <div className="flex items-center gap-2 mb-4 flex-wrap">
+                    {(() => {
+                      const badge = confidenceBadge[marketData.confidence] ?? confidenceBadge.medium
+                      return (
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: badge.bg, color: badge.text }}>
+                          {badge.label}
+                        </span>
+                      )
+                    })()}
+                    {marketData.sources.map((s, i) => (
+                      <span key={i} className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#F1F5F9', color: '#475569' }}>
+                        {s}
+                      </span>
                     ))}
                   </div>
+
+                  {/* Price range */}
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="rounded-xl p-3 text-center" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                      <p className="text-xs font-medium mb-1" style={{ color: '#94A3B8' }}>Low</p>
+                      <p className="text-base font-bold" style={{ color: '#334155' }}>{usd(marketData.low)}</p>
+                    </div>
+                    <div className="rounded-xl p-3 text-center" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                      <p className="text-xs font-medium mb-1" style={{ color: '#6EE7B7' }}>Average</p>
+                      <p className="text-xl font-bold" style={{ color: '#15803D' }}>{usd(marketData.average)}</p>
+                    </div>
+                    <div className="rounded-xl p-3 text-center" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                      <p className="text-xs font-medium mb-1" style={{ color: '#94A3B8' }}>High</p>
+                      <p className="text-base font-bold" style={{ color: '#334155' }}>{usd(marketData.high)}</p>
+                    </div>
+                  </div>
+
+                  {/* AI summary */}
+                  {marketData.summary && (
+                    <p className="text-sm leading-relaxed mb-5 px-1" style={{ color: '#475569' }}>
+                      {marketData.summary}
+                    </p>
+                  )}
+
+                  {/* Apply average */}
+                  <button
+                    onClick={() => handleApplyValue(marketData.average)}
+                    disabled={applyingValue}
+                    className="w-full py-3 rounded-xl text-sm font-semibold mb-5 transition-all disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, #3B82F6, #6366F1)', color: '#FFFFFF' }}
+                  >
+                    {applyingValue ? 'Saving…' : `Use Average — ${usd(marketData.average)}`}
+                  </button>
                 </>
               )}
+
+              {/* Manual override — always visible once modal opens (after load) */}
+              {!marketLoading && (
+                <div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex-1 h-px" style={{ background: '#E2E8F0' }} />
+                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>
+                      {marketData ? 'or enter manually' : 'Enter value manually'}
+                    </p>
+                    <div className="flex-1 h-px" style={{ background: '#E2E8F0' }} />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold"
+                        style={{ color: '#94A3B8' }}
+                      >$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="e.g. 120"
+                        value={manualValue}
+                        onChange={(e) => setManualValue(e.target.value)}
+                        className="w-full pl-7 pr-3 py-2.5 rounded-xl text-sm outline-none"
+                        style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#0F172A' }}
+                      />
+                    </div>
+                    <button
+                      onClick={handleSaveManual}
+                      disabled={savingManual || !manualValue}
+                      className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40"
+                      style={{ background: '#1E293B', color: '#FFFFFF' }}
+                    >
+                      {savingManual ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         </div>
