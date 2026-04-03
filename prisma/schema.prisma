@@ -74,8 +74,23 @@ model Item {
   updatedAt      DateTime  @updatedAt
 
   // Optional owner — becomes required when auth is live
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id])
+  priceHistory PriceHistory[]
+}
+
+// ─────────────────────────────────────────────
+// PriceHistory — tracks estimated value over time
+// source: "search" (auto lookup) | "manual" (user entered)
+// ─────────────────────────────────────────────
+model PriceHistory {
+  id        String   @id @default(cuid())
+  price     Float
+  source    String   @default("manual") // "search" | "manual"
+  createdAt DateTime @default(now())
+
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
 }
 
 // ─────────────────────────────────────────────

@@ -63,13 +63,21 @@ export default function ItemDetailPage() {
   const [manualValue, setManualValue] = useState('')
   const [savingManual, setSavingManual] = useState(false)
 
+  // Price history
+  const [priceHistory, setPriceHistory] = useState<{ id: string; price: number; source: string; createdAt: string }[]>([])
+
   useEffect(() => {
     fetch(`/api/items/${params.id}`)
       .then((res) => res.json())
-      .then((data) => {
-        setItem(data)
-        setLoading(false)
-      })
+      .then((data) => { setItem(data); setLoading(false) })
+  }, [params.id])
+
+  useEffect(() => {
+    if (!params.id) return
+    fetch(`/api/items/${params.id}/price-history`)
+      .then((res) => res.json())
+      .then((data) => { if (Array.isArray(data)) setPriceHistory(data) })
+      .catch(() => {})
   }, [params.id])
 
   async function handleToggleFavorite() {
@@ -94,7 +102,7 @@ export default function ItemDetailPage() {
     setMarketError('')
     setMarketData(null)
 
-    const params2 = new URLSearchParams({ name: item.name })
+    const params2 = new URLSearchParams({ name: item.name, itemId: item.id })
     if (item.manufacturer) params2.set('manufacturer', item.manufacturer)
     if (item.condition)    params2.set('condition', item.condition)
     if (item.edition)      params2.set('edition', item.edition)
@@ -113,6 +121,18 @@ export default function ItemDetailPage() {
     }
   }
 
+  async function saveHistory(price: number, source: 'search' | 'manual') {
+    try {
+      const res = await fetch(`/api/items/${params.id}/price-history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price, source }),
+      })
+      const entry = await res.json()
+      if (entry?.id) setPriceHistory((h) => [...h, entry])
+    } catch {}
+  }
+
   async function handleApplyValue(value: number) {
     if (!item) return
     setApplyingValue(true)
@@ -122,6 +142,7 @@ export default function ItemDetailPage() {
       body: JSON.stringify({ ...item, estimatedValue: value }),
     })
     setItem({ ...item, estimatedValue: value })
+    await saveHistory(value, 'search')
     setApplyingValue(false)
     setShowMarket(false)
     setManualValue('')
@@ -138,6 +159,7 @@ export default function ItemDetailPage() {
       body: JSON.stringify({ ...item, estimatedValue: num }),
     })
     setItem({ ...item, estimatedValue: num })
+    await saveHistory(num, 'manual')
     setSavingManual(false)
     setShowMarket(false)
     setManualValue('')
@@ -334,6 +356,99 @@ export default function ItemDetailPage() {
               <p className="text-sm leading-relaxed" style={{ color: '#78350F' }}>{item.notes}</p>
             </div>
           )}
+
+          {/* ── Value History ──────────────────────────────────────────── */}
+          {priceHistory.length > 0 && (() => {
+            const prices  = priceHistory.map((h) => h.price)
+            const minP    = Math.min(...prices)
+            const maxP    = Math.max(...prices)
+            const range   = maxP - minP || 1
+            const W = 400, H = 80, PAD = 8
+            const pts = priceHistory.map((h, i) => {
+              const x = PAD + (i / Math.max(priceHistory.length - 1, 1)) * (W - PAD * 2)
+              const y = H - PAD - ((h.price - minP) / range) * (H - PAD * 2)
+              return `${x},${y}`
+            })
+            const first = priceHistory[0]
+            const last  = priceHistory[priceHistory.length - 1]
+            const trend = last.price >= first.price
+
+            return (
+              <div className="mb-5 rounded-xl p-4" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>
+                    Value History
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold" style={{ color: trend ? '#15803D' : '#BE123C' }}>
+                      {trend ? '▲' : '▼'} {usd(Math.abs(last.price - first.price))}
+                    </span>
+                    <span className="text-xs" style={{ color: '#94A3B8' }}>since first record</span>
+                  </div>
+                </div>
+
+                {/* Sparkline */}
+                {priceHistory.length > 1 && (
+                  <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 64 }}>
+                    <polyline
+                      points={pts.join(' ')}
+                      fill="none"
+                      stroke={trend ? '#16A34A' : '#DC2626'}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    {/* Dots */}
+                    {priceHistory.map((h, i) => {
+                      const [x, y] = pts[i].split(',').map(Number)
+                      return (
+                        <circle
+                          key={h.id}
+                          cx={x} cy={y} r="3"
+                          fill={h.source === 'search' ? '#3B82F6' : '#F59E0B'}
+                          stroke="#FFFFFF" strokeWidth="1.5"
+                        />
+                      )
+                    })}
+                  </svg>
+                )}
+
+                {/* Log entries */}
+                <div className="mt-3 flex flex-col gap-1.5 max-h-36 overflow-y-auto">
+                  {[...priceHistory].reverse().map((h) => (
+                    <div key={h.id} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="px-1.5 py-0.5 rounded text-xs font-semibold"
+                          style={h.source === 'search'
+                            ? { background: '#EFF6FF', color: '#1D4ED8' }
+                            : { background: '#FEF9C3', color: '#854D0E' }}
+                        >
+                          {h.source === 'search' ? 'Search' : 'Manual'}
+                        </span>
+                        <span style={{ color: '#64748B' }}>
+                          {new Date(h.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
+                      <span className="font-semibold" style={{ color: '#0F172A' }}>{usd(h.price)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Legend */}
+                <div className="flex items-center gap-4 mt-3 pt-2 border-t" style={{ borderColor: '#E2E8F0' }}>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#3B82F6' }} />
+                    <span className="text-xs" style={{ color: '#94A3B8' }}>Market search</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#F59E0B' }} />
+                    <span className="text-xs" style={{ color: '#94A3B8' }}>Manual entry</span>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           <p className="text-xs mb-6" style={{ color: '#94A3B8' }}>
             Added {new Date(item.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
