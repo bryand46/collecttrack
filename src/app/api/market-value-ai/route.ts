@@ -6,19 +6,6 @@ import { withinLookupLimit, needsLookupReset, type Plan } from '@/lib/plans'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Extract dollar amounts. Requires at least 2 digits before the decimal
- * so we don't pick up things like "$5 shipping" or "$1.99 fee" alongside
- * a $650 statue price — minimum $10.
- */
-function extractPrices(text: string): number[] {
-  const matches = text.match(/\$\s*(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)/g) ?? []
-  return matches
-    .map((m) => parseFloat(m.replace(/[$,\s]/g, '')))
-    .filter((n) => n >= 10 && n <= 500_000)
-}
-
-/** IQR outlier removal — needs ≥4 values to be meaningful */
 function removeOutliers(prices: number[]): number[] {
   if (prices.length < 4) return prices
   const s   = [...prices].sort((a, b) => a - b)
@@ -31,32 +18,87 @@ function removeOutliers(prices: number[]): number[] {
   return s.filter((p) => p >= lower && p <= upper)
 }
 
-function sourceName(url: string): string {
-  try {
-    const host = new URL(url).hostname.replace('www.', '')
-    if (host.includes('ebay'))           return 'eBay'
-    if (host.includes('stockx'))         return 'StockX'
-    if (host.includes('amazon'))         return 'Amazon'
-    if (host.includes('etsy'))           return 'Etsy'
-    if (host.includes('mercari'))        return 'Mercari'
-    if (host.includes('poshmark'))       return 'Poshmark'
-    if (host.includes('grailed'))        return 'Grailed'
-    if (host.includes('pricecharting'))  return 'PriceCharting'
-    if (host.includes('tcgplayer'))      return 'TCGPlayer'
-    if (host.includes('goldin'))         return 'Goldin'
-    if (host.includes('comc'))           return 'COMC'
-    if (host.includes('sideshow'))       return 'Sideshow'
-    if (host.includes('bigbadtoystore')) return 'BigBadToyStore'
-    if (host.includes('lego'))           return 'LEGO'
-    if (host.includes('bricklink'))      return 'BrickLink'
-    return host.split('.')[0]
-  } catch { return 'Web' }
+/**
+ * Rough title relevance check — does the listing title contain enough of
+ * the key words from the item name / manufacturer to be the same thing?
+ * Returns a score 0-1. We filter out low-scoring titles.
+ */
+function relevanceScore(title: string, name: string, manufacturer: string): number {
+  const t    = title.toLowerCase()
+  const words = [...name.toLowerCase().split(/\s+/), ...manufacturer.toLowerCase().split(/\s+/)]
+    .filter((w) => w.length > 2)  // skip short words like "of", "the"
+  if (words.length === 0) return 1
+  const hits = words.filter((w) => t.includes(w)).length
+  return hits / words.length
 }
 
-type SearchResult = { title: string; url: string; description: string }
-type PriceResult  = { prices: number[]; source: string; url: string; title: string }
+// ── eBay scraper ─────────────────────────────────────────────────────────────
 
-async function braveSearch(query: string, apiKey: string): Promise<SearchResult[]> {
+type EbayListing = { title: string; price: number; url: string; soldDate: string }
+
+async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
+  const searchUrl =
+    `https://www.ebay.com/sch/i.html?` +
+    `_nkw=${encodeURIComponent(query)}` +
+    `&LH_Sold=1&LH_Complete=1&_sacat=0&_from=R40&rt=nc`
+
+  const res = await fetch(searchUrl, {
+    headers: {
+      'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Cache-Control':   'no-cache',
+    },
+    // No Next.js cache — we always want fresh sold data
+    cache: 'no-store',
+  })
+
+  if (!res.ok) throw new Error(`eBay responded with ${res.status}`)
+  const html = await res.text()
+
+  const listings: EbayListing[] = []
+
+  // ── Extract item blocks ────────────────────────────────────────────────────
+  // Each sold listing sits inside a <li class="s-item ..."> block.
+  // We split on these to keep prices + titles paired correctly.
+  const itemBlocks = html.split(/<li[^>]+class="[^"]*s-item[^"]*"/)
+
+  for (const block of itemBlocks.slice(1)) {  // skip first (empty before first li)
+    // Title — eBay puts it in spans with role="heading" or class="s-item__title"
+    const titleMatch =
+      block.match(/class="s-item__title[^"]*"[^>]*>\s*(?:<span[^>]*>)?\s*([^<]{5,})/i) ||
+      block.match(/role="heading"[^>]*>\s*([^<]{5,})/i)
+    const title = titleMatch?.[1]?.trim().replace(/&amp;/g, '&').replace(/&#39;/g, "'") ?? ''
+
+    // Skip eBay's injected "Shop on eBay" placeholder blocks
+    if (!title || title.toLowerCase().includes('shop on ebay') || title.toLowerCase().includes('results for')) continue
+
+    // Price — "$850.00" or "$1,000.00"
+    const priceMatch = block.match(/class="s-item__price[^"]*"[^>]*>\s*\$\s*([\d,]+(?:\.\d{1,2})?)/i)
+    if (!priceMatch) continue
+    const price = parseFloat(priceMatch[1].replace(/,/g, ''))
+    if (!price || price < 5 || price > 500_000) continue
+
+    // URL
+    const urlMatch = block.match(/href="(https:\/\/www\.ebay\.com\/itm\/[^"?]+)/)
+    const url = urlMatch?.[1] ?? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1`
+
+    // Sold date (optional — for display)
+    const dateMatch = block.match(/Sold\s+([\w]+ \d{1,2},\s*\d{4})/i)
+    const soldDate  = dateMatch?.[1] ?? ''
+
+    listings.push({ title, price, url, soldDate })
+  }
+
+  return listings
+}
+
+// ── Brave fallback ────────────────────────────────────────────────────────────
+
+type SearchResult = { title: string; url: string; description: string }
+
+async function fetchBraveResults(query: string, apiKey: string): Promise<SearchResult[]> {
   const url = new URL('https://api.search.brave.com/res/v1/web/search')
   url.searchParams.set('q', query)
   url.searchParams.set('count', '10')
@@ -65,23 +107,17 @@ async function braveSearch(query: string, apiKey: string): Promise<SearchResult[
   const res = await fetch(url.toString(), {
     headers: { 'Accept': 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': apiKey },
   })
-  if (!res.ok) throw new Error(`Brave ${res.status}`)
+  if (!res.ok) return []
   const data = await res.json()
   return data?.web?.results ?? []
 }
 
-function toPriceResults(results: SearchResult[]): PriceResult[] {
-  return results
-    .map((r) => ({
-      prices: extractPrices(`${r.title} ${r.description ?? ''}`),
-      source: sourceName(r.url),
-      url:    r.url,
-      title:  r.title,
-    }))
-    .filter((r) => r.prices.length > 0)
+function extractPricesFromText(text: string): number[] {
+  const matches = text.match(/\$\s*(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)/g) ?? []
+  return matches.map((m) => parseFloat(m.replace(/[$,\s]/g, ''))).filter((n) => n >= 10 && n <= 500_000)
 }
 
-// ── Route ────────────────────────────────────────────────────────────────────
+// ── Route ─────────────────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
@@ -94,11 +130,11 @@ export async function GET(request: Request) {
   const manufacturer = (sp.get('manufacturer') || '').trim()
   const condition    = (sp.get('condition') || '').trim()
   const edition      = (sp.get('edition') || '').trim()
-  const itemId       = (sp.get('itemId') || '').trim()   // optional — for saving history
+  const itemId       = (sp.get('itemId') || '').trim()
 
   if (!name) return NextResponse.json({ error: 'Missing item name' }, { status: 400 })
 
-  // ── Quota ─────────────────────────────────────────────────────────────────
+  // ── Quota ──────────────────────────────────────────────────────────────────
   const user = await prisma.user.findUnique({ where: { id: session.user.id } })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
@@ -111,89 +147,84 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Monthly lookup limit reached', plan: user.plan, upgradePath: '/pricing' }, { status: 403 })
   }
 
-  const apiKey = process.env.BRAVE_SEARCH_API_KEY
-  if (!apiKey) return NextResponse.json({ error: 'Brave Search API key not configured.' }, { status: 503 })
+  // ── Build search query ─────────────────────────────────────────────────────
+  // Include manufacturer in query — critical for specificity (Sideshow vs generic)
+  const editionPart = edition && edition !== '__other__' ? edition : ''
+  const searchQuery = [name, manufacturer, editionPart].filter(Boolean).join(' ')
 
-  const editionStr = edition && edition !== '__other__' ? `"${edition}"` : ''
-  const mfrStr     = manufacturer ? `"${manufacturer}"` : ''
-
-  // ── Three-pass search strategy ────────────────────────────────────────────
-  //
-  // Pass 1 — Marketplace-scoped, quoted terms.
-  //   Searches eBay, StockX, Mercari directly. These pages reliably show
-  //   item prices in their titles/snippets, making extraction accurate.
-  //
-  // Pass 2 — Marketplace-scoped, unquoted.
-  //   Same sites but without strict quoting. Catches generic names like
-  //   "Lighthouse" where quoting is too restrictive.
-  //
-  // Pass 3 — General web fallback.
-  //   Broad search across any site if marketplace searches both fail.
-  //
-  const marketplaceSites = 'site:ebay.com OR site:stockx.com OR site:mercari.com OR site:bricklink.com OR site:pricecharting.com'
-  const pass1 = [`"${name}"`, mfrStr, editionStr, 'sold', marketplaceSites].filter(Boolean).join(' ')
-  const pass2 = [manufacturer, name, editionStr, 'sold price', marketplaceSites].filter(Boolean).join(' ')
-  const pass3 = [mfrStr, `"${name}"`, editionStr, 'sold resale value price'].filter(Boolean).join(' ')
-
-  let priceResults: PriceResult[] = []
-  let passUsed = 1
+  // ── Primary: eBay sold listings ────────────────────────────────────────────
+  let listings: EbayListing[] = []
+  let source: 'ebay' | 'brave' = 'ebay'
 
   try {
-    // Pass 1
-    const r1 = await braveSearch(pass1, apiKey)
-    priceResults = toPriceResults(r1)
+    const raw = await fetchEbaySoldListings(searchQuery)
 
-    // Pass 2 if pass 1 found no prices
-    if (priceResults.length === 0) {
-      passUsed = 2
-      const r2 = await braveSearch(pass2, apiKey)
-      priceResults = toPriceResults(r2)
-    }
-
-    // Pass 3 if both marketplace searches failed
-    if (priceResults.length === 0) {
-      passUsed = 3
-      const r3 = await braveSearch(pass3, apiKey)
-      priceResults = toPriceResults(r3)
-    }
+    // Filter to listings whose titles are actually relevant to this item
+    // (removes noise when eBay shows loosely related results)
+    const RELEVANCE_THRESHOLD = 0.4
+    listings = raw.filter(
+      (l) => relevanceScore(l.title, name, manufacturer) >= RELEVANCE_THRESHOLD
+    )
   } catch (err) {
-    console.error('Brave fetch error:', err)
-    return NextResponse.json({ error: 'Could not reach search service.' }, { status: 502 })
+    console.error('eBay fetch error:', err)
+    // Fall through to Brave
   }
 
-  const rawPrices = priceResults.flatMap((r) => r.prices).sort((a, b) => a - b)
+  // ── Fallback: Brave Search ─────────────────────────────────────────────────
+  let usedBraveFallback = false
+  if (listings.length < 2) {
+    const apiKey = process.env.BRAVE_SEARCH_API_KEY
+    if (apiKey) {
+      try {
+        source = 'brave'
+        usedBraveFallback = true
+        const results  = await fetchBraveResults(
+          `${searchQuery} sold price site:ebay.com OR site:stockx.com OR site:mercari.com`,
+          apiKey
+        )
+        const bravePrices = results
+          .flatMap((r) => extractPricesFromText(`${r.title} ${r.description ?? ''}`).map((price) => ({
+            title: r.title, price, url: r.url, soldDate: '',
+          })))
+        listings = [...listings, ...bravePrices]
+      } catch (e) {
+        console.error('Brave fallback error:', e)
+      }
+    }
+  }
 
-  if (rawPrices.length === 0) {
+  if (listings.length === 0) {
     const hint = manufacturer
-      ? `Try making the item name more specific — e.g. include a model or set number.`
-      : `Try adding the manufacturer name for a more targeted search.`
+      ? `Try making the item name more specific (e.g. add a model or set number).`
+      : `Try adding the manufacturer or brand name.`
     return NextResponse.json(
-      { error: `No price data found for "${name}". ${hint}` },
+      { error: `No sold listings found for "${name}". ${hint}` },
       { status: 404 }
     )
   }
 
-  // ── Outlier removal + coherence check ────────────────────────────────────
+  // ── Outlier removal + coherence check ─────────────────────────────────────
+  const rawPrices     = listings.map((l) => l.price).sort((a, b) => a - b)
   const cleanedPrices = removeOutliers(rawPrices)
-  const cleanLow  = cleanedPrices[0]
-  const cleanHigh = cleanedPrices[cleanedPrices.length - 1]
-  const spreadRatio = cleanLow > 0 ? cleanHigh / cleanLow : Infinity
+  const cleanLow      = cleanedPrices[0]
+  const cleanHigh     = cleanedPrices[cleanedPrices.length - 1]
+  const spreadRatio   = cleanLow > 0 ? cleanHigh / cleanLow : Infinity
 
   if (cleanedPrices.length < 2) {
     return NextResponse.json(
-      { error: `Only one price point found for "${name}" — not enough for a reliable estimate. Check eBay directly for the most accurate value.` },
+      { error: `Only one matching listing found for "${name}" — not enough for a reliable estimate. Check eBay directly for the most accurate value.` },
       { status: 404 }
     )
   }
 
   if (spreadRatio > 10) {
     return NextResponse.json(
-      { error: `Prices found but too inconsistent ($${Math.round(cleanLow).toLocaleString()}–$${Math.round(cleanHigh).toLocaleString()}) — search likely matched different items. Try adding a model or set number to the item name.` },
+      { error: `Listings found but prices vary too widely ($${Math.round(cleanLow).toLocaleString()}–$${Math.round(cleanHigh).toLocaleString()}) — the search may have matched different items. Try adding the manufacturer or a model number.` },
       { status: 404 }
     )
   }
 
-  // ── Statistics ────────────────────────────────────────────────────────────
+  // ── Statistics ─────────────────────────────────────────────────────────────
   const sum     = cleanedPrices.reduce((a, b) => a + b, 0)
   const average = Math.round(sum / cleanedPrices.length)
   const low     = Math.round(cleanLow)
@@ -201,37 +232,36 @@ export async function GET(request: Request) {
 
   const spread = high > 0 ? (high - low) / high : 1
   const confidence: 'high' | 'medium' | 'low' =
-    priceResults.length >= 4 && spread < 0.4 ? 'high'
-    : priceResults.length >= 2 && spread < 0.7 ? 'medium'
+    cleanedPrices.length >= 5 && spread < 0.3 ? 'high'
+    : cleanedPrices.length >= 3 && spread < 0.6 ? 'medium'
     : 'low'
 
-  const sources     = [...new Set(priceResults.map((r) => r.source))].slice(0, 5)
-  const sourceLinks = priceResults.slice(0, 4).map((r) => ({
-    title: r.title, url: r.url, source: r.source, price: Math.round(r.prices[0]),
-  }))
+  // Build source links from relevant listings (closest to average)
+  const sourceLinks = [...listings]
+    .filter((l) => relevanceScore(l.title, name, manufacturer) >= 0.4)
+    .sort((a, b) => Math.abs(a.price - average) - Math.abs(b.price - average))
+    .slice(0, 4)
+    .map((l) => ({ title: l.title, url: l.url, source: 'eBay', price: Math.round(l.price) }))
 
+  const outlierCount = rawPrices.length - cleanedPrices.length
   const usd = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 
-  const outlierCount = rawPrices.length - cleanedPrices.length
   const summary =
-    `Found ${cleanedPrices.length} price point${cleanedPrices.length !== 1 ? 's' : ''}` +
+    `${cleanedPrices.length} sold listing${cleanedPrices.length !== 1 ? 's' : ''} on eBay` +
     (outlierCount > 0 ? ` (${outlierCount} outlier${outlierCount !== 1 ? 's' : ''} removed)` : '') +
-    ` across ${sources.join(', ')}` +
-    (passUsed > 1 ? ` — used broader search to find results` : '') +
-    `.`
+    `. Range: ${usd(low)}–${usd(high)}.` +
+    (usedBraveFallback ? ` (Limited eBay results — supplemented with web search.)` : '')
 
-  // ── Increment quota ───────────────────────────────────────────────────────
+  const sources = usedBraveFallback ? ['eBay', 'Web'] : ['eBay']
+
+  // ── Increment quota + save history ────────────────────────────────────────
   await prisma.user.update({ where: { id: user.id }, data: { marketLookupCount: { increment: 1 } } })
 
-  // ── Save to price history if itemId provided ──────────────────────────────
   if (itemId) {
     try {
-      await prisma.priceHistory.create({
-        data: { itemId, price: average, source: 'search' },
-      })
+      await prisma.priceHistory.create({ data: { itemId, price: average, source: 'search' } })
     } catch (e) {
-      // Non-fatal — don't fail the whole request if history save fails
       console.error('Price history save failed:', e)
     }
   }
