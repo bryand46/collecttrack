@@ -251,9 +251,11 @@ export async function GET(request: Request) {
     const raw = await fetchEbaySoldListings(searchQuery)
 
     // Filter to listings whose titles are actually relevant to this item.
-    // Threshold 0.5 = at least half the key words must appear in the listing title.
-    // This prevents cross-contamination (e.g. $12 Funko Pops mixed into $450 Sideshow results).
-    const RELEVANCE_THRESHOLD = 0.5
+    // Threshold 0.6 = at least 60% of key words must appear in the listing title.
+    // This prevents:
+    //   - $12 Funko Pops (score ~0.33) mixing into $450 Sideshow results
+    //   - Different Sideshow Poison Ivy statues without the "Deadly Nature" subtitle (score ~0.50)
+    const RELEVANCE_THRESHOLD = 0.6
     listings = raw.filter(
       (l) => relevanceScore(l.title, name, manufacturer) >= RELEVANCE_THRESHOLD
     )
