@@ -47,48 +47,77 @@ async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
       'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate, br',
       'Cache-Control':   'no-cache',
+      'Pragma':          'no-cache',
     },
-    // No Next.js cache — we always want fresh sold data
     cache: 'no-store',
   })
 
   if (!res.ok) throw new Error(`eBay responded with ${res.status}`)
   const html = await res.text()
 
+  // Detect block page / CAPTCHA
+  if (html.includes('g-recaptcha') || html.includes('blocked') || !html.includes('ebay')) {
+    throw new Error('eBay returned a blocked page')
+  }
+
   const listings: EbayListing[] = []
+  const ebayBase = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1`
 
-  // ── Extract item blocks ────────────────────────────────────────────────────
-  // Each sold listing sits inside a <li class="s-item ..."> block.
-  // We split on these to keep prices + titles paired correctly.
-  const itemBlocks = html.split(/<li[^>]+class="[^"]*s-item[^"]*"/)
+  // ── Strategy 1: split into per-listing blocks ──────────────────────────────
+  // eBay wraps each result in a <li> with class containing "s-item" or "s-card"
+  const blockRe = /<li[^>]+class="[^"]*(?:s-item|s-card)[^"]*"[^>]*>/gi
+  const splitPoints: number[] = []
+  let m: RegExpExecArray | null
+  while ((m = blockRe.exec(html)) !== null) splitPoints.push(m.index)
 
-  for (const block of itemBlocks.slice(1)) {  // skip first (empty before first li)
-    // Title — eBay puts it in spans with role="heading" or class="s-item__title"
-    const titleMatch =
-      block.match(/class="s-item__title[^"]*"[^>]*>\s*(?:<span[^>]*>)?\s*([^<]{5,})/i) ||
-      block.match(/role="heading"[^>]*>\s*([^<]{5,})/i)
-    const title = titleMatch?.[1]?.trim().replace(/&amp;/g, '&').replace(/&#39;/g, "'") ?? ''
+  for (let i = 0; i < splitPoints.length; i++) {
+    const block = html.slice(splitPoints[i], splitPoints[i + 1] ?? splitPoints[i] + 4000)
 
-    // Skip eBay's injected "Shop on eBay" placeholder blocks
-    if (!title || title.toLowerCase().includes('shop on ebay') || title.toLowerCase().includes('results for')) continue
+    // ── Title: try several patterns eBay has used ──────────────────────────
+    const rawTitle = (
+      block.match(/class="[^"]*s-item__title[^"]*"[^>]*>\s*<span[^>]*>([^<]{5,})/i)?.[1] ||
+      block.match(/class="[^"]*s-item__title[^"]*"[^>]*>([^<]{5,})/i)?.[1] ||
+      block.match(/role="heading"[^>]*>\s*([^<]{5,})/i)?.[1] ||
+      block.match(/class="[^"]*s-card__title[^"]*"[^>]*>([^<]{5,})/i)?.[1] ||
+      ''
+    ).trim().replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
 
-    // Price — "$850.00" or "$1,000.00"
-    const priceMatch = block.match(/class="s-item__price[^"]*"[^>]*>\s*\$\s*([\d,]+(?:\.\d{1,2})?)/i)
-    if (!priceMatch) continue
-    const price = parseFloat(priceMatch[1].replace(/,/g, ''))
+    if (!rawTitle || /shop on ebay|results for/i.test(rawTitle)) continue
+
+    // ── Price: try every price-related class eBay has used ─────────────────
+    // Your devtools showed: class="su-styled-text positive bold large-1 s-card__price"
+    // Older eBay used: class="s-item__price"
+    // We match any class attribute that contains "price" anywhere in it
+    const rawPrice = (
+      block.match(/class="[^"]*s-item__price[^"]*"[^>]*>\s*\$\s*([\d,]+(?:\.\d{1,2})?)/i)?.[1] ||
+      block.match(/class="[^"]*s-card__price[^"]*"[^>]*>\s*\$\s*([\d,]+(?:\.\d{1,2})?)/i)?.[1] ||
+      block.match(/class="[^"]*(?:price)[^"]*"[^>]*>\s*\$\s*([\d,]+(?:\.\d{1,2})?)/i)?.[1] ||
+      // last resort: first $ amount in block
+      block.match(/>\s*\$\s*([\d,]+(?:\.\d{1,2})?)\s*</)?.[1]
+    )
+    if (!rawPrice) continue
+    const price = parseFloat(rawPrice.replace(/,/g, ''))
     if (!price || price < 5 || price > 500_000) continue
 
-    // URL
-    const urlMatch = block.match(/href="(https:\/\/www\.ebay\.com\/itm\/[^"?]+)/)
-    const url = urlMatch?.[1] ?? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1`
+    const url     = block.match(/href="(https:\/\/www\.ebay\.com\/itm\/[^"?]+)/)?.[1] ?? ebayBase
+    const soldDate= block.match(/Sold\s+([\w]+ \d{1,2},?\s*\d{4})/i)?.[1] ?? ''
 
-    // Sold date (optional — for display)
-    const dateMatch = block.match(/Sold\s+([\w]+ \d{1,2},\s*\d{4})/i)
-    const soldDate  = dateMatch?.[1] ?? ''
+    listings.push({ title: rawTitle, price, url, soldDate })
+  }
 
-    listings.push({ title, price, url, soldDate })
+  // ── Strategy 2: price sweep fallback ──────────────────────────────────────
+  // If block parsing found nothing, sweep the entire HTML for dollar amounts.
+  // Since we searched specifically for the item+manufacturer, the prices on
+  // this page are overwhelmingly for the correct item. IQR filters outliers.
+  if (listings.length === 0) {
+    const priceMatches = [...html.matchAll(/>\s*\$\s*([\d,]+(?:\.\d{1,2})?)\s*</g)]
+    for (const pm of priceMatches) {
+      const price = parseFloat(pm[1].replace(/,/g, ''))
+      if (price >= 10 && price <= 500_000) {
+        listings.push({ title: query, price, url: ebayBase, soldDate: '' })
+      }
+    }
   }
 
   return listings
