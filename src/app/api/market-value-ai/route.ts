@@ -42,24 +42,46 @@ async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
     `_nkw=${encodeURIComponent(query)}` +
     `&LH_Sold=1&LH_Complete=1&_sacat=0&_from=R40&rt=nc`
 
+  console.log(`[market-value] eBay fetch: ${searchUrl}`)
+
   const res = await fetch(searchUrl, {
     headers: {
-      'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.208 Safari/537.36',
+      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
       'Cache-Control':   'no-cache',
       'Pragma':          'no-cache',
+      'Sec-Fetch-Dest':  'document',
+      'Sec-Fetch-Mode':  'navigate',
+      'Sec-Fetch-Site':  'none',
+      'Upgrade-Insecure-Requests': '1',
     },
     cache: 'no-store',
   })
 
-  if (!res.ok) throw new Error(`eBay responded with ${res.status}`)
+  if (!res.ok) {
+    console.log(`[market-value] eBay HTTP error: ${res.status}`)
+    throw new Error(`eBay responded with ${res.status}`)
+  }
+
   const html = await res.text()
+  console.log(`[market-value] eBay HTML size: ${(html.length / 1024).toFixed(1)} KB`)
 
   // Detect block page / CAPTCHA
-  if (html.includes('g-recaptcha') || html.includes('blocked') || !html.includes('ebay')) {
+  if (html.includes('g-recaptcha') || html.includes('Robot Check')) {
+    console.log('[market-value] eBay returned CAPTCHA page')
     throw new Error('eBay returned a blocked page')
   }
+  if (!html.includes('ebay')) {
+    console.log('[market-value] eBay response does not contain "ebay" — likely redirect/block')
+    throw new Error('eBay returned an unexpected page')
+  }
+
+  // Diagnostic: log price-related class names found
+  const priceClassMatches = html.match(/class="([^"]*price[^"]*)"/gi) ?? []
+  const uniquePriceClasses = [...new Set(priceClassMatches)].slice(0, 5)
+  console.log(`[market-value] Price classes in HTML: ${uniquePriceClasses.join(' | ') || 'NONE'}`)
 
   const listings: EbayListing[] = []
   const ebayBase = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1`
@@ -70,6 +92,8 @@ async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
   const splitPoints: number[] = []
   let m: RegExpExecArray | null
   while ((m = blockRe.exec(html)) !== null) splitPoints.push(m.index)
+
+  console.log(`[market-value] eBay s-item/s-card blocks found: ${splitPoints.length}`)
 
   for (let i = 0; i < splitPoints.length; i++) {
     const block = html.slice(splitPoints[i], splitPoints[i + 1] ?? splitPoints[i] + 4000)
@@ -86,7 +110,7 @@ async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
     if (!rawTitle || /shop on ebay|results for/i.test(rawTitle)) continue
 
     // ── Price: try every price-related class eBay has used ─────────────────
-    // Your devtools showed: class="su-styled-text positive bold large-1 s-card__price"
+    // DevTools showed: class="su-styled-text positive bold large-1 s-card__price"
     // Older eBay used: class="s-item__price"
     // We match any class attribute that contains "price" anywhere in it
     const rawPrice = (
@@ -106,6 +130,8 @@ async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
     listings.push({ title: rawTitle, price, url, soldDate })
   }
 
+  console.log(`[market-value] Strategy 1 (block parse): ${listings.length} listings`)
+
   // ── Strategy 2: price sweep fallback ──────────────────────────────────────
   // If block parsing found nothing, sweep the entire HTML for dollar amounts.
   // Since we searched specifically for the item+manufacturer, the prices on
@@ -118,6 +144,7 @@ async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
         listings.push({ title: query, price, url: ebayBase, soldDate: '' })
       }
     }
+    console.log(`[market-value] Strategy 2 (full sweep): ${listings.length} prices`)
   }
 
   return listings
@@ -186,16 +213,31 @@ export async function GET(request: Request) {
   let source: 'ebay' | 'brave' = 'ebay'
 
   try {
+    // Pass 1: full query (name + manufacturer)
     const raw = await fetchEbaySoldListings(searchQuery)
 
-    // Filter to listings whose titles are actually relevant to this item
-    // (removes noise when eBay shows loosely related results)
-    const RELEVANCE_THRESHOLD = 0.4
+    // Filter to listings whose titles are actually relevant to this item.
+    // Threshold 0.5 = at least half the key words must appear in the listing title.
+    // This prevents cross-contamination (e.g. $12 Funko Pops mixed into $450 Sideshow results).
+    const RELEVANCE_THRESHOLD = 0.5
     listings = raw.filter(
       (l) => relevanceScore(l.title, name, manufacturer) >= RELEVANCE_THRESHOLD
     )
+
+    // Pass 2: if we got 0 relevant results and a manufacturer was provided,
+    // try a broader search using just the item name (manufacturer may be too restrictive
+    // for eBay's text search, or listings may omit it in the title).
+    if (listings.length === 0 && manufacturer) {
+      console.log(`[market-value] Pass 1 returned 0 relevant results — retrying with name only: "${name}"`)
+      const raw2 = await fetchEbaySoldListings(name)
+      const pass2 = raw2.filter(
+        (l) => relevanceScore(l.title, name, manufacturer) >= RELEVANCE_THRESHOLD
+      )
+      console.log(`[market-value] Pass 2 returned ${pass2.length} relevant results`)
+      listings = pass2
+    }
   } catch (err) {
-    console.error('eBay fetch error:', err)
+    console.error('[market-value] eBay fetch error:', err)
     // Fall through to Brave
   }
 
