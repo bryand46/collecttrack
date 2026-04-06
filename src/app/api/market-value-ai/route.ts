@@ -19,17 +19,51 @@ function removeOutliers(prices: number[]): number[] {
 }
 
 /**
- * Rough title relevance check — does the listing title contain enough of
- * the key words from the item name / manufacturer to be the same thing?
- * Returns a score 0-1. We filter out low-scoring titles.
+ * Clamp prices to within `factor`x of the median.
+ * e.g. factor=4 with median=$400 → keeps $100–$1600.
+ * This runs BEFORE IQR to eliminate items that are clearly different products
+ * (e.g. $20 loose accessories or $2,000 factory-sealed rare pieces when
+ * the bulk of results cluster around $400).
+ */
+function clampToMedianRange(prices: number[], factor = 4): number[] {
+  if (prices.length < 3) return prices
+  const sorted = [...prices].sort((a, b) => a - b)
+  const median = sorted[Math.floor(sorted.length / 2)]
+  if (median <= 0) return prices
+  return sorted.filter((p) => p >= median / factor && p <= median * factor)
+}
+
+/**
+ * Title relevance check — does this listing title contain enough of the key
+ * words from the item name / manufacturer to be the same product?
+ *
+ * Returns a score 0–1. Hard rule: if a manufacturer is specified, the title
+ * MUST contain at least one manufacturer word; otherwise the score is capped
+ * just below 0.5 (below the filter threshold).
+ * This prevents "$20 Poison Ivy figure by some other brand" from contaminating
+ * results for a $450 Sideshow Collectibles Poison Ivy statue.
  */
 function relevanceScore(title: string, name: string, manufacturer: string): number {
-  const t    = title.toLowerCase()
-  const words = [...name.toLowerCase().split(/\s+/), ...manufacturer.toLowerCase().split(/\s+/)]
-    .filter((w) => w.length > 2)  // skip short words like "of", "the"
-  if (words.length === 0) return 1
-  const hits = words.filter((w) => t.includes(w)).length
-  return hits / words.length
+  const t        = title.toLowerCase()
+  const nameWords = name.toLowerCase().split(/\s+/).filter((w) => w.length > 2)
+  const mfrWords  = manufacturer.toLowerCase().split(/\s+/).filter((w) => w.length > 2)
+  const allWords  = [...nameWords, ...mfrWords]
+
+  if (allWords.length === 0) return 1
+
+  const hits = allWords.filter((w) => t.includes(w)).length
+  const score = hits / allWords.length
+
+  // Manufacturer gate: if a manufacturer was specified, the listing title must
+  // mention at least one manufacturer word. Without this, a "$20 Poison Ivy
+  // Deadly Nature figure (Funko/McFarlane/etc)" would score 0.67 just from
+  // matching all 4 item-name words, even though it's a completely different product.
+  if (mfrWords.length > 0) {
+    const mfrHits = mfrWords.filter((w) => t.includes(w)).length
+    if (mfrHits === 0) return Math.min(score, 0.45) // force below 0.5 threshold
+  }
+
+  return score
 }
 
 // ── eBay scraper ─────────────────────────────────────────────────────────────
@@ -275,8 +309,13 @@ export async function GET(request: Request) {
   }
 
   // ── Outlier removal + coherence check ─────────────────────────────────────
+  // Step 1: clamp to within 4x of median (removes obviously wrong items —
+  //         e.g. $20 loose accessories mixed in with $450 premium statues)
+  // Step 2: IQR removes statistical outliers from what's left
   const rawPrices     = listings.map((l) => l.price).sort((a, b) => a - b)
-  const cleanedPrices = removeOutliers(rawPrices)
+  const medianClamped = clampToMedianRange(rawPrices, 4)
+  const cleanedPrices = removeOutliers(medianClamped)
+  console.log(`[market-value] Prices raw:${rawPrices.length} → medianClamp:${medianClamped.length} → IQR:${cleanedPrices.length}`)
   const cleanLow      = cleanedPrices[0]
   const cleanHigh     = cleanedPrices[cleanedPrices.length - 1]
   const spreadRatio   = cleanLow > 0 ? cleanHigh / cleanLow : Infinity
