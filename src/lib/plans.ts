@@ -1,4 +1,4 @@
-export type Plan = 'free' | 'collector' | 'vault'
+export type Plan = 'free' | 'collector' | 'vault' | 'admin'
 
 export interface PlanConfig {
   id: Plan
@@ -72,6 +72,22 @@ export const PLANS: Record<Plan, PlanConfig> = {
       'Priority support',
     ],
   },
+  admin: {
+    id: 'admin',
+    name: 'Admin',
+    price: 0,
+    stripePriceId: '',
+    color: 'from-purple-600 to-violet-700',
+    itemLimit: -1,
+    imageLimit: -1,
+    marketLookupLimit: -1,
+    analytics: true,
+    csvExport: true,
+    features: [
+      'Unlimited everything',
+      'Admin access',
+    ],
+  },
 }
 
 export function getPlan(plan: string): PlanConfig {
@@ -80,13 +96,13 @@ export function getPlan(plan: string): PlanConfig {
 
 /** Returns true if the user is within their item limit */
 export function withinItemLimit(plan: Plan, currentCount: number): boolean {
-  const limit = PLANS[plan].itemLimit
+  const limit = PLANS[plan]?.itemLimit ?? 25
   return limit === -1 || currentCount < limit
 }
 
 /** Returns true if the user has remaining market lookups this month */
 export function withinLookupLimit(plan: Plan, currentCount: number): boolean {
-  const limit = PLANS[plan].marketLookupLimit
+  const limit = PLANS[plan]?.marketLookupLimit ?? 5
   return limit === -1 || currentCount < limit
 }
 
