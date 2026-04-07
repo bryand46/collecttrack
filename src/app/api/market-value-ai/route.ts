@@ -26,9 +26,13 @@ function removeOutliers(prices: number[]): number[] {
  * the bulk of results cluster around $400).
  */
 function clampToMedianRange(prices: number[], factor = 4): number[] {
-  if (prices.length < 3) return prices
+  if (prices.length < 2) return prices  // need at least 2 to have a meaningful median
   const sorted = [...prices].sort((a, b) => a - b)
-  const median = sorted[Math.floor(sorted.length / 2)]
+  // For 2 prices, use the higher one as the "anchor" (more likely the true sold price
+  // for a collectible; the lower one is often a shipping cost, partial payment, etc.)
+  const median = prices.length === 2
+    ? sorted[1]
+    : sorted[Math.floor(sorted.length / 2)]
   if (median <= 0) return prices
   return sorted.filter((p) => p >= median / factor && p <= median * factor)
 }
@@ -395,7 +399,10 @@ export async function GET(request: Request) {
     )
   }
 
-  if (spreadRatio > 10) {
+  // Coherence check: if the cleaned price range is still > 15x wide, the results
+  // are too mixed to give a reliable estimate. Using 15x (not 10x) to accommodate
+  // Brave Search fallback data which is inherently noisier than direct eBay scraping.
+  if (spreadRatio > 15) {
     return NextResponse.json(
       { error: `Listings found but prices vary too widely ($${Math.round(cleanLow).toLocaleString()}–$${Math.round(cleanHigh).toLocaleString()}) — the search may have matched different items. Try adding the manufacturer or a model number.` },
       { status: 404 }
