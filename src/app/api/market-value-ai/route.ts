@@ -238,9 +238,12 @@ export async function GET(request: Request) {
   }
 
   // ── Build search query ─────────────────────────────────────────────────────
-  // Include manufacturer in query — critical for specificity (Sideshow vs generic)
-  const editionPart = edition && edition !== '__other__' ? edition : ''
-  const searchQuery = [name, manufacturer, editionPart].filter(Boolean).join(' ')
+  // Use name + manufacturer ONLY — do NOT include edition in the eBay query.
+  // Including edition tags like "Exclusive" causes eBay to return 0 exact matches
+  // and fall back to "Results matching fewer words", which drags in unrelated items.
+  // Edition is an inconsistently-used label that collectors add to listings; it should
+  // not be part of the search string. Name + manufacturer is specific enough.
+  const searchQuery = [name, manufacturer].filter(Boolean).join(' ')
 
   // ── Primary: eBay sold listings ────────────────────────────────────────────
   let listings: EbayListing[] = []
