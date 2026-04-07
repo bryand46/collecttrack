@@ -102,10 +102,17 @@ async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
   const html = await res.text()
   console.log(`[market-value] eBay HTML size: ${(html.length / 1024).toFixed(1)} KB`)
 
-  // Detect block page / CAPTCHA
-  if (html.includes('g-recaptcha') || html.includes('Robot Check')) {
-    console.log('[market-value] eBay returned CAPTCHA page')
-    throw new Error('eBay returned a blocked page')
+  // Detect block page / CAPTCHA / "Pardon Our Interruption"
+  // eBay returns a tiny ~13KB page with this title when blocking data-center IPs
+  if (
+    html.includes('g-recaptcha') ||
+    html.includes('Robot Check') ||
+    html.includes('Pardon Our Interruption') ||
+    html.includes('robot or a script') ||
+    html.length < 30_000  // real results page is always 200KB+
+  ) {
+    console.log(`[market-value] eBay blocked request (htmlSize=${(html.length/1024).toFixed(1)}KB)`)
+    throw new Error('eBay blocked this request')
   }
   if (!html.includes('ebay')) {
     console.log('[market-value] eBay response does not contain "ebay" — likely redirect/block')
@@ -188,12 +195,11 @@ async function fetchEbaySoldListings(query: string): Promise<EbayListing[]> {
 
 type SearchResult = { title: string; url: string; description: string }
 
-async function fetchBraveResults(query: string, apiKey: string): Promise<SearchResult[]> {
+async function fetchBraveResults(query: string, apiKey: string, count = 10): Promise<SearchResult[]> {
   const url = new URL('https://api.search.brave.com/res/v1/web/search')
   url.searchParams.set('q', query)
-  url.searchParams.set('count', '10')
+  url.searchParams.set('count', String(count))
   url.searchParams.set('safesearch', 'moderate')
-  url.searchParams.set('freshness', 'py')
   const res = await fetch(url.toString(), {
     headers: { 'Accept': 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': apiKey },
   })
@@ -205,6 +211,62 @@ async function fetchBraveResults(query: string, apiKey: string): Promise<SearchR
 function extractPricesFromText(text: string): number[] {
   const matches = text.match(/\$\s*(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)/g) ?? []
   return matches.map((m) => parseFloat(m.replace(/[$,\s]/g, ''))).filter((n) => n >= 10 && n <= 500_000)
+}
+
+/**
+ * Use Brave Search to find eBay sold-listing prices when direct eBay scraping is blocked.
+ *
+ * Strategy: run TWO Brave queries:
+ *   1. site:ebay.com/itm   — individual listing pages (have exact sold prices in title/snippet)
+ *   2. General sold search  — catches StockX, Mercari, other platforms as extra data points
+ *
+ * For each result we look first for an explicit "sold for $X" pattern, then fall back to
+ * any dollar amount in the snippet. Results are tagged with a title reconstructed from
+ * the search snippet so the relevance filter still works.
+ */
+async function fetchBravePrices(
+  name: string,
+  manufacturer: string,
+  apiKey: string
+): Promise<EbayListing[]> {
+  const base = [name, manufacturer].filter(Boolean).join(' ')
+  const ebayBase = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(base)}&LH_Sold=1`
+  const listings: EbayListing[] = []
+
+  // Query 1: eBay individual item pages (most reliable for exact prices)
+  const q1Results = await fetchBraveResults(
+    `${base} sold site:ebay.com/itm`, apiKey, 10
+  )
+  console.log(`[market-value] Brave Q1 (ebay.com/itm): ${q1Results.length} results`)
+
+  // Query 2: broader sold search across marketplaces
+  const q2Results = await fetchBraveResults(
+    `${base} sold price completed listing`, apiKey, 10
+  )
+  console.log(`[market-value] Brave Q2 (broad sold): ${q2Results.length} results`)
+
+  for (const r of [...q1Results, ...q2Results]) {
+    const text = `${r.title ?? ''} ${r.description ?? ''}`
+
+    // Prefer explicit "sold for $X" pattern
+    const soldMatch = text.match(/sold\s+(?:for\s+)?\$\s*([\d,]+(?:\.\d{1,2})?)/i)
+    if (soldMatch) {
+      const price = parseFloat(soldMatch[1].replace(/,/g, ''))
+      if (price >= 10 && price <= 500_000) {
+        listings.push({ title: r.title ?? base, price, url: r.url ?? ebayBase, soldDate: '' })
+        continue
+      }
+    }
+
+    // Fall back: any dollar amounts in the snippet
+    const prices = extractPricesFromText(text)
+    for (const price of prices.slice(0, 2)) {
+      listings.push({ title: r.title ?? base, price, url: r.url ?? ebayBase, soldDate: '' })
+    }
+  }
+
+  console.log(`[market-value] Brave total raw listings: ${listings.length}`)
+  return listings
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────
@@ -281,6 +343,8 @@ export async function GET(request: Request) {
   }
 
   // ── Fallback: Brave Search ─────────────────────────────────────────────────
+  // Used whenever eBay is blocked (very common on Vercel's data-center IPs) or
+  // returns fewer than 2 relevant listings.
   let usedBraveFallback = false
   if (listings.length < 2) {
     const apiKey = process.env.BRAVE_SEARCH_API_KEY
@@ -288,17 +352,16 @@ export async function GET(request: Request) {
       try {
         source = 'brave'
         usedBraveFallback = true
-        const results  = await fetchBraveResults(
-          `${searchQuery} sold price site:ebay.com OR site:stockx.com OR site:mercari.com`,
-          apiKey
+        const braveRaw = await fetchBravePrices(name, manufacturer, apiKey)
+        // Apply same relevance filter — Brave titles are often full eBay listing titles
+        const RELEVANCE_THRESHOLD = 0.6
+        const braveFiltered = braveRaw.filter(
+          (l) => relevanceScore(l.title, name, manufacturer) >= RELEVANCE_THRESHOLD
         )
-        const bravePrices = results
-          .flatMap((r) => extractPricesFromText(`${r.title} ${r.description ?? ''}`).map((price) => ({
-            title: r.title, price, url: r.url, soldDate: '',
-          })))
-        listings = [...listings, ...bravePrices]
+        console.log(`[market-value] Brave after relevance filter: ${braveFiltered.length} listings`)
+        listings = [...listings, ...braveFiltered]
       } catch (e) {
-        console.error('Brave fallback error:', e)
+        console.error('[market-value] Brave fallback error:', e)
       }
     }
   }
