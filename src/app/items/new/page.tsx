@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ImagePicker from '@/components/ImagePicker'
+import PhotoIdentify from '@/components/PhotoIdentify'
 
 // Categories organized by group for the dropdown
 const CATEGORY_GROUPS: { group: string; items: string[] }[] = [
@@ -273,6 +274,7 @@ export default function NewItemPage() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [showImagePicker, setShowImagePicker] = useState(false)
+  const [showPhotoIdentify, setShowPhotoIdentify] = useState(false)
   const [manufacturerOther, setManufacturerOther] = useState('')
   const [preferredGroups, setPreferredGroups] = useState<string[]>([])
 
@@ -302,6 +304,38 @@ export default function NewItemPage() {
       setValueError(err.message || 'Could not fetch value data.')
     } finally {
       setValueLoading(false)
+    }
+  }
+
+  function handlePhotoIdentifyConfirm(fields: Partial<{
+    name: string; manufacturer: string; category: string; edition: string; description: string
+  }>) {
+    setShowPhotoIdentify(false)
+    setForm((prev) => ({
+      ...prev,
+      name:        fields.name        ?? prev.name,
+      category:    fields.category    ?? prev.category,
+      description: fields.description ?? prev.description,
+      // Edition: if it matches a known option use it; else treat as custom
+      edition:     fields.edition     ?? prev.edition,
+    }))
+    // Manufacturer: check if it's in the known list for the category
+    if (fields.manufacturer) {
+      const knownList = MANUFACTURER_SUGGESTIONS[fields.category ?? ''] ?? []
+      const isKnown   = knownList.some(
+        (m) => m.toLowerCase() === fields.manufacturer!.toLowerCase()
+      )
+      if (isKnown) {
+        // Match case-exactly from list
+        const exact = knownList.find(
+          (m) => m.toLowerCase() === fields.manufacturer!.toLowerCase()
+        )
+        setForm((prev) => ({ ...prev, manufacturer: exact ?? fields.manufacturer! }))
+        setManufacturerOther('')
+      } else {
+        setForm((prev) => ({ ...prev, manufacturer: 'Other' }))
+        setManufacturerOther(fields.manufacturer!)
+      }
     }
   }
 
@@ -374,10 +408,33 @@ export default function NewItemPage() {
           </svg>
           Back to My Items
         </Link>
-        <h1 className="text-2xl font-bold" style={{ color: '#0F172A' }}>Add New Item</h1>
-        <p className="text-sm mt-1" style={{ color: '#64748B' }}>
-          Fill in the details about your collectible below.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: '#0F172A' }}>Add New Item</h1>
+            <p className="text-sm mt-1" style={{ color: '#64748B' }}>
+              Fill in the details about your collectible below.
+            </p>
+          </div>
+          {/* Add by Photo — shortcut to auto-fill from an image */}
+          <button
+            type="button"
+            onClick={() => setShowPhotoIdentify(true)}
+            className="shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all"
+            style={{
+              background:   'linear-gradient(135deg, #6366F1, #8B5CF6)',
+              color:        '#FFFFFF',
+              boxShadow:    '0 2px 8px rgba(99,102,241,0.35)',
+              whiteSpace:   'nowrap',
+            }}
+            title="Upload or snap a photo — we'll identify the item automatically"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+            Add by Photo
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit}>
@@ -790,6 +847,14 @@ export default function NewItemPage() {
             setShowImagePicker(false)
           }}
           onClose={() => setShowImagePicker(false)}
+        />
+      )}
+
+      {/* Photo Identify Modal */}
+      {showPhotoIdentify && (
+        <PhotoIdentify
+          onConfirm={handlePhotoIdentifyConfirm}
+          onClose={() => setShowPhotoIdentify(false)}
         />
       )}
     </div>
