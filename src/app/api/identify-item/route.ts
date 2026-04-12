@@ -84,7 +84,7 @@ export async function POST(request: Request) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
         messages: [
           {
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
       const errBody = await anthropicRes.text()
       console.error('[identify-item] Anthropic error:', anthropicRes.status, errBody)
       return NextResponse.json(
-        { error: `Identification service error (${anthropicRes.status}). Check your ANTHROPIC_API_KEY.` },
+        { error: `Identification service error (${anthropicRes.status}). Try again or add the item manually.` },
         { status: 502 }
       )
     }
