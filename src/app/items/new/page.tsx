@@ -308,16 +308,16 @@ export default function NewItemPage() {
   }
 
   function handlePhotoIdentifyConfirm(fields: Partial<{
-    name: string; manufacturer: string; category: string; edition: string; description: string
+    name: string; manufacturer: string; category: string; edition: string; description: string; estimatedValue: string
   }>) {
     setShowPhotoIdentify(false)
     setForm((prev) => ({
       ...prev,
-      name:        fields.name        ?? prev.name,
-      category:    fields.category    ?? prev.category,
-      description: fields.description ?? prev.description,
-      // Edition: if it matches a known option use it; else treat as custom
-      edition:     fields.edition     ?? prev.edition,
+      name:           fields.name           ?? prev.name,
+      category:       fields.category       ?? prev.category,
+      description:    fields.description    ?? prev.description,
+      edition:        fields.edition        ?? prev.edition,
+      estimatedValue: fields.estimatedValue ?? prev.estimatedValue,
     }))
     // Manufacturer: check if it's in the known list for the category
     if (fields.manufacturer) {
